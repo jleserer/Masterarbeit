@@ -1,0 +1,154 @@
+================================================================================
+                 STOCK PREDICTION MODELS - QUICK REFERENCE
+================================================================================
+
+PROJECT STRUCTURE:
+==================
+
+models/
+├── 📄 data_preparation.py      ← Data loading & 65%-15%-20% split (GOODFELLOW)
+├── 🧠 lstm_model.py            ← LSTM implementation (128→64 units)
+├── 🧠 cnn_model.py             ← CNN implementation (64→128→256 filters)
+├── ⚖️  model_comparison.py      ← Train & compare both models
+├── ✓  test_models.py           ← Quick test of all modules
+├── 📖 README.md                ← Full technical documentation
+└── 📋 IMPLEMENTATION_SUMMARY.txt ← This project summary
+
+QUICK START:
+============
+
+1️⃣  Test everything works:
+    $ python test_models.py
+
+2️⃣  Train LSTM model:
+    $ python lstm_model.py
+    
+3️⃣  Train CNN model:
+    $ python cnn_model.py
+    
+4️⃣  Compare both:
+    $ python model_comparison.py
+
+KEY PARAMETERS:
+===============
+
+BOTH MODELS:
+  🔹 Data Split: 65% Train | 15% Val | 20% Test (Goodfellow)
+  🔹 Loopback Window: L=30 (features: Close, High, Low)
+  🔹 Batch Size: 32
+  🔹 Epochs: 100 (with Early Stopping)
+  🔹 Learning Rate: 0.001 (Adam)
+  🔹 Dropout: 0.2
+
+LSTM:
+  🔹 Layers: LSTM(128) → LSTM(64) → Dense(32)
+  🔹 Parameters: 119,171
+  🔹 Strength: Captures temporal dependencies
+
+CNN:
+  🔹 Layers: Conv1D(64,128,256) → Dense(64,32)
+  🔹 Parameters: 323,139
+  🔹 Strength: Hierarchical feature learning
+
+DATA FLOW:
+==========
+
+normalizedData/*.csv
+        ↓
+  [Data Preparation]
+        ↓
+    +--------+--------+--------+
+    |        |        |        |
+   65%      15%      20%
+  Train    Val      Test
+    |        |        |
+    +--------+--------+
+           ↓
+    [Sequences L=30]
+           ↓
+    +--LSTM--+
+    |        |
+    +--CNN---+
+           ↓
+      [Predictions]
+           ↓
+    [Inverse Transform]
+           ↓
+    [Original Scale]
+
+OUTPUT DIRECTORIES:
+===================
+
+After training, creates:
+  
+  lstm_results/
+    ├── lstm_model.h5                 ← Trained model
+    └── lstm_training_history.png     ← Loss/MAE plots
+  
+  cnn_results/
+    ├── cnn_model.h5                  ← Trained model
+    └── cnn_training_history.png      ← Loss/MAE plots
+  
+  model_comparison_results.json       ← Performance comparison
+
+FEATURES:
+=========
+
+✅ Goodfellow 65%-15%-20% data split
+✅ Loopback-Window sequences (30-step temporal context)
+✅ LSTM model with 2 stacked layers
+✅ CNN model with 3 convolutional layers
+✅ Multi-output regression (Close, High, Low)
+✅ Early stopping & learning rate adaptation
+✅ Inverse transform to original price scale
+✅ Training history visualization
+✅ Model serialization
+✅ Comprehensive documentation
+✅ Automated testing suite
+
+HYPERPARAMETER TUNING:
+=====================
+
+Edit class variables in lstm_model.py or cnn_model.py:
+
+    LOOKBACK_WINDOW = 30      # Try: 10, 20, 60
+    LSTM_UNITS = [128, 64]    # Try: [256, 128], [64, 32]
+    DROPOUT_RATE = 0.2        # Try: 0.1, 0.3
+    LEARNING_RATE = 0.001     # Try: 0.005, 0.0001
+    BATCH_SIZE = 32           # Try: 16, 64
+    EPOCHS = 100              # Try: 50, 200
+
+CNN-specific:
+    CONV_FILTERS = [64, 128, 256]    # Try: [128, 256, 512]
+    KERNEL_SIZE = 5                   # Try: 3, 7
+
+REFERENCES:
+===========
+
+📚 Goodfellow, I., Bengio, Y., & Courville, A. (2016)
+   "Deep Learning". MIT Press.
+
+📚 Hochreiter, S., & Schmidhuber, J. (1997)
+   "Long short-term memory". Neural Computation.
+
+📚 LeCun, Y., Bengio, Y., & Hinton, G. (2015)
+   "Deep Learning". Nature, 521(7553), 436-444.
+
+SUPPORT:
+========
+
+See README.md for:
+  ✓ Detailed architecture explanations
+  ✓ Hyperparameter rationale
+  ✓ Extended usage examples
+  ✓ Future improvements
+
+See IMPLEMENTATION_SUMMARY.txt for:
+  ✓ Complete feature checklist
+  ✓ Test results
+  ✓ Module structure
+  ✓ Next steps
+
+================================================================================
+                        Ready for Training! 🚀
+================================================================================

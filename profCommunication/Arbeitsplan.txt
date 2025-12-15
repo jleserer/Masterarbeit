@@ -1,0 +1,31 @@
+I. Datensatz bestimmen und charakterisieren
+- Bestimmen den Datensatz
+  - historischen OHLCV-Daten
+  - Zu bestimmen: Periode, Börse-Indizen
+- ! Charakterisierung des Datensatz
+- Interface to Datensatz - Aufbau des Datensatzes
+II. Bestimmen der Architektur der DL-Modelle
+- ! Zu bestimmen: Mögliche Architektur und Parameterbereiche 
+                  der einzelnen Modellen
+- Optional: Hybridmodelle zu spezifizieren
+III. Modell Aufbau
+- Implementierung das Modell
+  - Training
+  - Hyperparameter tuning
+  - Test
+  - Evaluierung
+IV. Training + Hyperparameter tuning
+- Training durchführen 
+- Hyperparameteroptimierung mittels Grid Search (Metriken: MAE, R2).
+  Zu bestimmen:
+  - optimale loopback window size
+  - Wichtigkeit der Feature Komponenten
+V. Evaluierung - mit optimierte Parametereinstellung
+- Genauigkeit: durch MAE, RMSE, R2
+- Trainingszeit, Overfitting/Underfitting sowie 
+- optional: statistischer Test (t-Test)
+VI. Hypothesen test 
+- Z.B. durch die folgende drei Hypothesen
+  - H1: LSTM erzielt geringere MAE-Werte als CNN und Transformer.
+  - H2: Transformer- und hybride Modelle generalisieren besser als Einzelmodelle.
+  - H3: Alle Modelle übertreffen eine einfache Baseline (gleitender Durchschnitt).
