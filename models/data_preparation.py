@@ -80,25 +80,50 @@ class DataPreparator:
         return self.scaler.inverse_transform(scaled_data)
 
 
-def create_sequences(data, lookback_window):
+def create_sequences(data, lookback_window, target_column=0):
     """
-    Create sequences using Loopback-Window approach.
-    
+    Create sequences using Loopback-Window approach with floating window.
+    Uses backward-looking window (same as sliceWindow.py implementation).
+
     Args:
         data: 2D array of shape (n_samples, n_features)
         lookback_window: L (window length for sequences)
-    
+        target_column: Index of target column (default: 0 for 'Close')
+
     Returns:
         X: Sequences of shape (n_sequences, L, n_features)
-        y: Target values of shape (n_sequences, n_features)
+        y: Target values of shape (n_sequences,) - single column
     """
+
+    """
+    Forward looking window for sequence creation.
+
     X, y = [], []
-    
+
     for i in range(len(data) - lookback_window):
         # Window: [i, i+1, ..., i+L-1] -> Target: [i+L]
         X.append(data[i:i + lookback_window])
         y.append(data[i + lookback_window])
-    
+
+    return np.array(X), np.array(y)
+    """
+
+    """
+     Backward looking window for sequence creation.
+     
+     """
+    X, y = [], []
+
+    # Ensure data is 2D
+    if len(data.shape) == 1:
+        data = data.reshape(-1, 1)
+
+    for i in range(lookback_window, len(data)):
+        # Use previous L days' data: [i-L, i-L+1, ..., i-1]
+        X.append(data[i - lookback_window:i, :])
+        # Target: Next day's value at target_column
+        y.append(data[i, target_column])
+
     return np.array(X), np.array(y)
 
 

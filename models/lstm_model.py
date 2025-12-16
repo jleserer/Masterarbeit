@@ -8,7 +8,7 @@ Architecture & Hyperparameters (based on paper comparison):
   - Optimizer: Adam (learning rate 0.001)
   - Loss: MSE (for single-output regression)
   
-Loopback Window: L=30 (30 trading days history)
+Loopback Window: L=60 (60 trading days history)
 Target: Single-output (Close price only)
 """
 
@@ -27,7 +27,7 @@ class LSTMModel:
     """LSTM-based stock price predictor."""
     
     # Architecture Configuration
-    LOOKBACK_WINDOW = 30  # L: number of previous time steps
+    LOOKBACK_WINDOW = 60  # L: number of previous time steps (60 days floating window)
     LSTM_UNITS = [128, 64]  # Two LSTM layers
     DROPOUT_RATE = 0.2
     DENSE_UNITS = 32

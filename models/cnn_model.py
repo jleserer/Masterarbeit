@@ -9,7 +9,7 @@ Architecture & Hyperparameters (based on paper comparison):
   - Optimizer: Adam (learning rate 0.001)
   - Loss: MSE (for single-output regression)
 
-Loopback Window: L=30 (same as LSTM for fair comparison)
+Loopback Window: L=60 (60 trading days floating window, same as LSTM for fair comparison)
 Target: Single-output (Close price only)
 
 CNN treats the time-series data as a 2D feature map where:
@@ -32,7 +32,7 @@ class CNNModel:
     """CNN-based stock price predictor."""
     
     # Architecture Configuration
-    LOOKBACK_WINDOW = 30  # L: same as LSTM for comparison
+    LOOKBACK_WINDOW = 60  # L: 60 days floating window (same as LSTM for comparison)
     CONV_FILTERS = [64, 128, 256]  # Progressive increase
     KERNEL_SIZE = 5  # 5-point convolution filter
     POOL_SIZE = 2
