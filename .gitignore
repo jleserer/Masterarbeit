@@ -7,6 +7,55 @@ lehrmaterial/Python_DataScience_ML_DL_WG_libraries.pdf
 lehrmaterial/Python_script_with_command_line arguments_an_example.pdf
 lehrmaterial/Python_tutorial.pdf
 lehrmaterial/README.pdf
+lehrmaterial/ESA/classification_results.txt
+lehrmaterial/ESA/F4.log
+lehrmaterial/ESA/f12.log
+lehrmaterial/ESA/kMC_classification_wind.py
+lehrmaterial/ESA/matrix_calculation.py
+lehrmaterial/ESA/matrix_input.txt
+lehrmaterial/ESA/matrix_output.txt
+lehrmaterial/ESA/SED604-ESA1.docx
+lehrmaterial/ESA/SED604-ESA1.pdf
+lehrmaterial/ESA/T1.csv
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/2D_plot_math_functions.jpg
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/2D_plot_math_functions.py
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/data_structures.log
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/data_structures.py
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/df1_worl.csv
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/df1.csv
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/linear_algebra.log
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/linear_system_of_equations.log
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/linear_system_of_equations.py
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/lineare_algebra.py
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/random_number_generating.log
+lehrmaterial/Lektionen/Lektion1 - Scientific_computing/random_number_generating.py
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/2D_scatter_plot_s_and_p_500.jpg
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/2D_scatter_plot_s_and_p_500.py
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/3D_scatter_subplots_s_and_p_500.jpg
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/3D_scatter_subplots_s_and_p_500.py
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/3D_surface_subplots_s_and_p_500.jpg
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/3D_surface_subplots_s_and_p_500.py
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/load_fromNet_s_and_p_500.py
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/load_options.py
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/pairwise_plot_s_and_p_500.py
+lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/print_to_file.py
+lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/Histogram_s_and_p_500.py
+lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/Linear_Regression_sequences_s_and_p_500.py
+lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/Linear_Regression_T1.py
+lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/print_dataset_summary_iris.py
+lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/s_and_p_500.csv
+lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/compare_classificators_by_cross_validation.py
+lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/FNN_simple_binary_classification_pid.py
+lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/random_forest_prediction_T1_test.txt
+lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/random_forest_prediction_T1.log
+lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/random_forest_prediction_T1.py
+lehrmaterial/Lektionen/Lektion5 - CNN_for_image_classification/CNN_classification_iics.py
+lehrmaterial/Lektionen/Lektion6 - RNN_for_time_series_prediction/LSTM_hyperparam_tune_s_and_p_500.py
+lehrmaterial/Lektionen/Lektion6 - RNN_for_time_series_prediction/LSTM_prediction_s_and_p_500.py
+lehrmaterial/Lektionen/Lektion6 - RNN_for_time_series_prediction/RNN_GNU_prediction_T1.log
+lehrmaterial/Lektionen/Lektion6 - RNN_for_time_series_prediction/RNN_GRU_prediction_T1.py
+lehrmaterial/Lektionen/Lektion7 - KG_creation/create_KG_from_scratch.py
+lehrmaterial/Lektionen/Lektion7 - KG_creation/text_for_KG.txt
 lehrmaterial/datasets/intel_image_classification_small/test/buildings/20057.jpg
 lehrmaterial/datasets/intel_image_classification_small/test/buildings/20060.jpg
 lehrmaterial/datasets/intel_image_classification_small/test/buildings/20061.jpg
@@ -1714,60 +1763,6 @@ lehrmaterial/datasets/pima-indians-diabetes/Pima Indians Diabetes Database.txt
 lehrmaterial/datasets/pima-indians-diabetes/pima-indians-diabetes.csv
 lehrmaterial/datasets/s_and_p_500/s_and_p_500.csv
 lehrmaterial/datasets/wind/T1.csv
-lehrmaterial/ESA/classification_results.txt
-lehrmaterial/ESA/F4.log
-lehrmaterial/ESA/f12.log
-lehrmaterial/ESA/kMC_classification_wind.py
-lehrmaterial/ESA/matrix_calculation.py
-lehrmaterial/ESA/matrix_input.txt
-lehrmaterial/ESA/matrix_output.txt
-lehrmaterial/ESA/SED604-ESA1.docx
-lehrmaterial/ESA/SED604-ESA1.pdf
-lehrmaterial/ESA/T1.csv
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/2D_plot_math_functions.jpg
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/2D_plot_math_functions.py
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/data_structures.log
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/data_structures.py
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/df1_worl.csv
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/df1.csv
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/linear_algebra.log
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/linear_system_of_equations.log
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/linear_system_of_equations.py
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/lineare_algebra.py
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/random_number_generating.log
-lehrmaterial/Lektionen/Lektion1 - Scientific_computing/random_number_generating.py
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/2D_scatter_plot_s_and_p_500.jpg
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/2D_scatter_plot_s_and_p_500.py
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/3D_scatter_subplots_s_and_p_500.jpg
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/3D_scatter_subplots_s_and_p_500.py
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/3D_surface_subplots_s_and_p_500.jpg
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/3D_surface_subplots_s_and_p_500.py
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/load_fromNet_s_and_p_500.py
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/load_options.py
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/pairwise_plot_s_and_p_500.py
-lehrmaterial/Lektionen/Lektion2 - Data_load_and_visualization/print_to_file.py
-lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/Histogram_s_and_p_500.py
-lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/Linear_Regression_sequences_s_and_p_500.py
-lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/Linear_Regression_T1.py
-lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/print_dataset_summary_iris.py
-lehrmaterial/Lektionen/Lektion3 - Statistical_evaluation/s_and_p_500.csv
-lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/compare_classificators_by_cross_validation.py
-lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/FNN_simple_binary_classification_pid.py
-lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/random_forest_prediction_T1_test.txt
-lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/random_forest_prediction_T1.log
-lehrmaterial/Lektionen/Lektion4 - ML_and_FNN/random_forest_prediction_T1.py
-lehrmaterial/Lektionen/Lektion5 - CNN_for_image_classification/CNN_classification_iics.py
-lehrmaterial/Lektionen/Lektion6 - RNN_for_time_series_prediction/LSTM_hyperparam_tune_s_and_p_500.py
-lehrmaterial/Lektionen/Lektion6 - RNN_for_time_series_prediction/LSTM_prediction_s_and_p_500.py
-lehrmaterial/Lektionen/Lektion6 - RNN_for_time_series_prediction/RNN_GNU_prediction_T1.log
-lehrmaterial/Lektionen/Lektion6 - RNN_for_time_series_prediction/RNN_GRU_prediction_T1.py
-lehrmaterial/Lektionen/Lektion7 - KG_creation/create_KG_from_scratch.py
-lehrmaterial/Lektionen/Lektion7 - KG_creation/text_for_KG.txt
-lehrmaterial/python_LVA_PraktEntML/datasets/iris/iris.csv
-lehrmaterial/python_LVA_PraktEntML/datasets/pima-indians-diabetes/Pima Indians Diabetes Database.txt
-lehrmaterial/python_LVA_PraktEntML/datasets/pima-indians-diabetes/pima-indians-diabetes.csv
-lehrmaterial/python_LVA_PraktEntML/datasets/s_and_p_500/s_and_p_500.csv
-lehrmaterial/python_LVA_PraktEntML/datasets/wind/T1.csv
 lehrmaterial/python_LVA_PraktEntML/Lektionen/Lektion1 - Scientific_computing/2D_plot_math_functions.py
 lehrmaterial/python_LVA_PraktEntML/Lektionen/Lektion1 - Scientific_computing/data_structures.py
 lehrmaterial/python_LVA_PraktEntML/Lektionen/Lektion1 - Scientific_computing/linear_system_of_equations.py
@@ -1793,7 +1788,9 @@ lehrmaterial/python_LVA_PraktEntML/Lektionen/Lektion6 - RNN_for_time_series_pred
 lehrmaterial/python_LVA_PraktEntML/Lektionen/Lektion6 - RNN_for_time_series_prediction/RNN_GRU_prediction_T1.py
 lehrmaterial/python_LVA_PraktEntML/Lektionen/Lektion7 - KG_creation/create_KG_from_scratch.py
 lehrmaterial/python_LVA_PraktEntML/Lektionen/Lektion7 - KG_creation/text_for_KG.txt
-models/__pycache__/lstm_model.cpython-313.pyc
-models/__pycache__/data_preparation.cpython-313.pyc
-models/__pycache__/cnn_model.cpython-313.pyc
-lstm_results/lstm_model.h5
+lehrmaterial/python_LVA_PraktEntML/datasets/iris/iris.csv
+lehrmaterial/python_LVA_PraktEntML/datasets/pima-indians-diabetes/Pima Indians Diabetes Database.txt
+lehrmaterial/python_LVA_PraktEntML/datasets/pima-indians-diabetes/pima-indians-diabetes.csv
+lehrmaterial/python_LVA_PraktEntML/datasets/s_and_p_500/s_and_p_500.csv
+lehrmaterial/python_LVA_PraktEntML/datasets/wind/T1.csv
+.gitignore
