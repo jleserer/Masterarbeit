@@ -9,7 +9,7 @@ models/
 ├── 📄 data_preparation.py      ← Data loading & 65%-15%-20% split (GOODFELLOW)
 ├── 🧠 lstm_model.py            ← LSTM implementation (128→64 units)
 ├── 🧠 cnn_model.py             ← CNN implementation (64→128→256 filters)
-├── ⚖️  model_comparison.py      ← Train & compare both models
+├── ⚖️ model_comparison.py      ← Train & compare both models
 ├── ✓  test_models.py           ← Quick test of all modules
 ├── 📖 README.md                ← Full technical documentation
 └── 📋 IMPLEMENTATION_SUMMARY.txt ← This project summary

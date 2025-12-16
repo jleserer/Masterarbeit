@@ -1794,3 +1794,10 @@ lehrmaterial/python_LVA_PraktEntML/datasets/pima-indians-diabetes/pima-indians-d
 lehrmaterial/python_LVA_PraktEntML/datasets/s_and_p_500/s_and_p_500.csv
 lehrmaterial/python_LVA_PraktEntML/datasets/wind/T1.csv
 .gitignore
+cnn_results_SP500/cnn_model.h5
+cnn_results_SP500/cnn_training_history.png
+lstm_results_SP500/lstm_model.h5
+lstm_results_SP500/lstm_training_history.png
+model_comparison_results.json
+.gitignore
+.gitignore
