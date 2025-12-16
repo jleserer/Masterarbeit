@@ -6,7 +6,7 @@ Dieses Repository enthält die Implementierung von Deep Learning Modellen (LSTM 
 
 ```
 Masterarbeit/
-├── models/                    # Deep Learning Modelle und Implementierungen
+├── models/                   # Deep Learning Modelle und Implementierungen
 │   ├── lstm_model.py         # LSTM-Modell (60-Tage floating window)
 │   ├── cnn_model.py          # CNN-Modell (60-Tage floating window)
 │   ├── data_preparation.py   # Datenaufbereitung und Sequenzerzeugung
@@ -28,7 +28,7 @@ Masterarbeit/
 ├── model_comparison_results.json  # Vergleichsergebnisse
 │
 ├── lehrmaterial/             # Lehrmaterialien und Übungen
-└── profCommunication/        # Kommunikation mit Betreuer
+└── profCommunication/        # Kommunikation mit Professor
 
 ```
 
