@@ -127,10 +127,25 @@ Siehe [models/sliceWindow.py](models/sliceWindow.py) für die Referenzimplementi
 
 ## Datensätze
 
-Primärer Datensatz: **S&P 500** (^SPX)
+### Testdatensatz
+Primärer Testdatensatz: **S&P 500** (^SPX)
 - Zeitraum: 2021-01-01 bis 2024-10-26
 - Quelle: Yahoo Finance
 - Features: Open, High, Low, Close, Volume, Adj Close
+
+### Referenzdatensätze
+Das Repository enthält zusätzliche normalisierte Datensätze in `stockData/normalizedData/`:
+
+- **SP500_historical_data.csv** - S&P 500 Index
+- **NASDAQ_historical_data.csv** - NASDAQ Composite
+- **DAX_historical_data.csv** - Deutscher Aktienindex
+- **FTSE100_historical_data.csv** - Financial Times Stock Exchange 100
+- **NIKKEI_historical_data.csv** - Nikkei 225 (Japan)
+- **HANG_SENG_historical_data.csv** - Hang Seng Index (Hong Kong)
+- **10-Year Bond_historical_data.csv** - 10-Jahres Staatsanleihen
+- **30 Year Bond_historical_data.csv** - 30-Jahres Staatsanleihen
+
+Alle Datensätze sind vorverarbeitet und normalisiert, bereit für das Training der Modelle.
 
 ## Tests
 
@@ -155,43 +170,8 @@ Tests umfassen:
 - **Quick Reference**: [models/QUICK_REFERENCE.txt](models/QUICK_REFERENCE.txt)
 - **Test-Ergebnisse**: [models/TEST_RESULTS.txt](models/TEST_RESULTS.txt)
 
-## Technologie-Stack
-
-- **Deep Learning**: TensorFlow/Keras
-- **Datenverarbeitung**: Pandas, NumPy
-- **Normalisierung**: scikit-learn (MinMaxScaler)
-- **Visualisierung**: Matplotlib, Seaborn
-- **Datenabruf**: yfinance
-
 ## Wissenschaftliche Grundlagen
 
 - **Data Split**: Goodfellow, Bengio, Courville (2016) - "Deep Learning"
 - **LSTM**: Hochreiter & Schmidhuber (1997)
 - **CNN for Time Series**: LeCun, Bengio, Hinton (2015)
-
-## Projekt-Status
-
-- [x] Datenakquisition und -aufbereitung
-- [x] LSTM-Modell Implementierung
-- [x] CNN-Modell Implementierung
-- [x] 60-Tage Floating Window Integration
-- [x] Modellvergleich und Evaluation
-- [x] Umfassende Tests
-- [x] Dokumentation
-
-## Zukünftige Erweiterungen
-
-- [ ] Hyperparameter-Tuning mit GridSearch
-- [ ] Ensemble-Modelle (LSTM + CNN)
-- [ ] Attention-Mechanismen
-- [ ] Multi-Step Ahead Vorhersagen
-- [ ] Erweiterung auf mehrere Aktien
-- [ ] Real-time Prediction API
-
-## Autor
-
-Masterarbeit-Projekt zur Aktienkursprognose mit Deep Learning
-
-## Lizenz
-
-Akademisches Projekt
