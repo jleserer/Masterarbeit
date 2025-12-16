@@ -23,7 +23,7 @@ Die Datensätze werden nach dem Standard aus "Deep Learning" (Goodfellow, Bengio
 Beide Modelle verwenden eine **Loopback-Window** Strategie zur Sequenzerzeugung:
 
 ```
-L = 30 (Loopback-Window Länge)
+L = 60 (Loopback-Window Länge)
 
 Input:  X[i:i+L] = Sequenz von L aufeinanderfolgenden Zeitpunkten
 Output: y[i+L]   = Zielwert zum Zeitpunkt (i+L)
@@ -32,7 +32,7 @@ Features pro Zeitpunkt: [Close, High, Low]
 ```
 
 Dies erzeugt Sequenzen der Form:
-- **X shape**: (n_sequences, 30, 3) - 30 Zeitschritte × 3 Features
+- **X shape**: (n_sequences, 60, 3) - 60 Zeitschritte × 3 Features
 - **y shape**: (n_sequences, 3) - Vorhersage der 3 Features
 
 ## LSTM-Modell
@@ -61,7 +61,7 @@ Dense(3, activation='linear') [Output: Close, High, Low]
 
 | Parameter | Wert | Begründung |
 |-----------|------|-----------|
-| Lookback Window | 30 | 1 Monat Trading (ca. 20 Business Days) |
+| Lookback Window | 60 | 2 Monate Trading (ca. 20 Business Days) |
 | LSTM Units | 128, 64 | Progressiv abnehmende Komplexität |
 | Dropout Rate | 0.2 | Regularisierung zur Vermeidung von Overfitting |
 | Learning Rate | 0.001 | Standard für Adam Optimizer |
@@ -80,7 +80,7 @@ Dense(3, activation='linear') [Output: Close, High, Low]
 ### Architektur
 
 ```
-Input Layer (30, 3)
+Input Layer (60, 3)
     ↓
 Conv1D(64, kernel=5, padding='same') + ReLU
     ↓
@@ -113,7 +113,7 @@ Dense(3, activation='linear') [Output: Close, High, Low]
 
 | Parameter | Wert | Begründung |
 |-----------|------|-----------|
-| Lookback Window | 30 | Gleich wie LSTM für faire Vergleichbarkeit |
+| Lookback Window | 60 | Gleich wie LSTM für faire Vergleichbarkeit |
 | Conv Filter | 64, 128, 256 | Progressive Tiefe (Feature-Hierarchie) |
 | Kernel Size | 5 | Größeres Fenster für Mustererkennung |
 | Pool Size | 2 | Dimensionsreduktion und Abstraktionen |
@@ -158,7 +158,7 @@ X_train, y_train = create_sequences(train, lookback=30)
 
 Konfigurierbare Parameter:
 ```python
-LOOKBACK_WINDOW = 30
+LOOKBACK_WINDOW = 60
 LSTM_UNITS = [128, 64]
 DROPOUT_RATE = 0.2
 DENSE_UNITS = 32
@@ -180,7 +180,7 @@ Hauptmethoden:
 
 Konfigurierbare Parameter:
 ```python
-LOOKBACK_WINDOW = 30
+LOOKBACK_WINDOW = 60
 CONV_FILTERS = [64, 128, 256]
 KERNEL_SIZE = 5
 POOL_SIZE = 2
