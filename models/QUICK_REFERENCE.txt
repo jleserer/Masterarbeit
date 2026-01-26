@@ -53,7 +53,7 @@ CNN:
 DATA FLOW:
 ==========
 
-normalizedData/*.csv
+preprocessedData/*.csv
         ↓
   [Data Preparation]
         ↓

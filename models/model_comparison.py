@@ -106,7 +106,7 @@ if __name__ == "__main__":
         os.path.dirname(__file__),
         '..',
         'stockData',
-        'normalizedData',
+        'preprocessedData',
         'SP500_historical_data.csv'
     )
     

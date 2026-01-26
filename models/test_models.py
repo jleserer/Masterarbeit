@@ -7,7 +7,7 @@ import sys
 print("Testing data preparation...")
 from data_preparation import DataPreparator, create_sequences
 
-data_path = os.path.join('..', 'stockData', 'normalizedData', 'SP500_historical_data.csv')
+data_path = os.path.join('..', 'stockData', 'preprocessedData', 'SP500_historical_data.csv')
 preparator = DataPreparator(data_path)
 train, val, test = preparator.load_and_prepare()
 print("✓ Data preparation successful")

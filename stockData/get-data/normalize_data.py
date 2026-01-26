@@ -4,9 +4,9 @@ from datetime import datetime
 
 # Pfade definieren
 SOURCE_DIR = "stockData/sourceData"
-NORMALIZED_DIR = "stockData/normalizedData"
+NORMALIZED_DIR = "stockData/preprocessedData"
 
-# Stelle sicher, dass das normalizedData Verzeichnis existiert
+# Stelle sicher, dass das preprocessedData Verzeichnis existiert
 os.makedirs(NORMALIZED_DIR, exist_ok=True)
 
 # Liste alle CSV-Dateien im sourceData Verzeichnis

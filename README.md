@@ -17,7 +17,7 @@ Masterarbeit/
 │
 ├── stockData/                # Aktiendaten und Datenverarbeitung
 │   ├── sourceData/           # Rohdaten von Yahoo Finance
-│   ├── normalizedData/       # Normalisierte CSV-Dateien (für Modelle)
+│   ├── preprocessedData/     # Normalisierte CSV-Dateien (für Modelle)
 │   ├── excerptData/          # Daten-Auszüge für Tests
 │   ├── get-data/             # Scripts zum Datenabruf
 │   ├── plots/                # Datenvisualisierungen
@@ -52,7 +52,7 @@ Hauptdateien:
 Enthält alle Aktiendaten in verschiedenen Verarbeitungsstufen:
 
 - **sourceData/**: Originaldaten von Yahoo Finance
-- **normalizedData/**: Bereinigte und normalisierte CSV-Dateien
+- **preprocessedData/**: Bereinigte und normalisierte CSV-Dateien
 - **excerptData/**: Kleinere Datenauszüge für schnelle Tests
 - **get-data/**: Python-Scripts zum Herunterladen neuer Daten
 - **plots/**: Visualisierungen der Datenanalyse
@@ -134,7 +134,7 @@ Primärer Testdatensatz: **S&P 500** (^SPX)
 - Features: Open, High, Low, Close, Volume, Adj Close
 
 ### Referenzdatensätze
-Das Repository enthält zusätzliche normalisierte Datensätze in `stockData/normalizedData/`:
+Das Repository enthält zusätzliche normalisierte Datensätze in `stockData/preprocessedData/`:
 
 - **SP500_historical_data.csv** - S&P 500 Index
 - **NASDAQ_historical_data.csv** - NASDAQ Composite

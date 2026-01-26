@@ -27,7 +27,7 @@ class TestDataPreparation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Load data once for all tests."""
-        cls.data_path = os.path.join('..', 'stockData', 'normalizedData', 'SP500_historical_data.csv')
+        cls.data_path = os.path.join('..', 'stockData', 'preprocessedData', 'SP500_historical_data.csv')
         cls.preparator = DataPreparator(cls.data_path)
     
     def test_file_exists(self):
@@ -91,7 +91,7 @@ class TestSequenceCreation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Prepare data for sequence tests."""
-        cls.data_path = os.path.join('..', 'stockData', 'normalizedData', 'SP500_historical_data.csv')
+        cls.data_path = os.path.join('..', 'stockData', 'preprocessedData', 'SP500_historical_data.csv')
         cls.preparator = DataPreparator(cls.data_path)
         cls.train, cls.val, cls.test = cls.preparator.load_and_prepare()
     
@@ -147,7 +147,7 @@ class TestLSTMModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Prepare LSTM model."""
-        cls.data_path = os.path.join('..', 'stockData', 'normalizedData', 'SP500_historical_data.csv')
+        cls.data_path = os.path.join('..', 'stockData', 'preprocessedData', 'SP500_historical_data.csv')
         
         # Create quick LSTM for testing
         class QuickLSTM(LSTMModel):
@@ -221,7 +221,7 @@ class TestCNNModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Prepare CNN model."""
-        cls.data_path = os.path.join('..', 'stockData', 'normalizedData', 'SP500_historical_data.csv')
+        cls.data_path = os.path.join('..', 'stockData', 'preprocessedData', 'SP500_historical_data.csv')
         
         # Create quick CNN for testing
         class QuickCNN(CNNModel):
@@ -295,7 +295,7 @@ class TestModelComparison(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Build both models."""
-        cls.data_path = os.path.join('..', 'stockData', 'normalizedData', 'SP500_historical_data.csv')
+        cls.data_path = os.path.join('..', 'stockData', 'preprocessedData', 'SP500_historical_data.csv')
         
         class QuickLSTM(LSTMModel):
             EPOCHS = 1

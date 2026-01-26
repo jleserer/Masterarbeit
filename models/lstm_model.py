@@ -29,11 +29,11 @@ class LSTMModel:
     # Architecture Configuration
     LOOKBACK_WINDOW = 60  # L: number of previous time steps (60 days floating window)
     LSTM_UNITS = [128, 64]  # Two LSTM layers
-    DROPOUT_RATE = 0.2
-    DENSE_UNITS = 32
-    LEARNING_RATE = 0.001
-    BATCH_SIZE = 32
-    EPOCHS = 100
+    DROPOUT_RATE = 0.2 #0,4
+    DENSE_UNITS = 32 #64, 16 
+    LEARNING_RATE = 0.001 #0,005
+    BATCH_SIZE = 32 #8 16 32 <- mit einer Konfig von den anderen Configs prüfen
+    EPOCHS = 100 #50 <- mit einer Konfig von den anderen Configs prüfen
     
     def __init__(self, data_path, output_dir='lstm_results'):
         """
@@ -228,7 +228,7 @@ if __name__ == "__main__":
         os.path.dirname(__file__), 
         '..', 
         'stockData', 
-        'normalizedData', 
+        'preprocessedData',
         'SP500_historical_data.csv'
     )
     

@@ -129,7 +129,7 @@ def create_sequences(data, lookback_window, target_column=0):
 
 if __name__ == "__main__":
     # Example usage
-    data_path = os.path.join(os.path.dirname(__file__), '..', 'stockData', 'normalizedData', 'SP500_historical_data.csv')
+    data_path = os.path.join(os.path.dirname(__file__), '..', 'stockData', 'preprocessedData', 'SP500_historical_data.csv')
     
     preparator = DataPreparator(data_path)
     train, val, test = preparator.load_and_prepare()

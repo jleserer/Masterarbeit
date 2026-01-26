@@ -84,7 +84,7 @@ models/
 TESTED FEATURES
 ===============================================================================
 
-✓ Data loading from normalizedData/SP500_historical_data.csv
+✓ Data loading from preprocessedData/SP500_historical_data.csv
   - Original size: 9564 samples × 4 columns
   - After cleaning: 9562 samples × 3 features
   - Train: 6215 samples (65.0%)

@@ -34,13 +34,13 @@ class CNNModel:
     # Architecture Configuration
     LOOKBACK_WINDOW = 60  # L: 60 days floating window (same as LSTM for comparison)
     CONV_FILTERS = [64, 128, 256]  # Progressive increase
-    KERNEL_SIZE = 5  # 5-point convolution filter
-    POOL_SIZE = 2
-    DROPOUT_RATE = 0.2
+    KERNEL_SIZE = 5  # 5-point convolution filter - #3 ausprobieren
+    POOL_SIZE = 2 # 4
+    DROPOUT_RATE = 0.2 #0.4
     DENSE_UNITS = 64
     LEARNING_RATE = 0.001
-    BATCH_SIZE = 32
-    EPOCHS = 100
+    BATCH_SIZE = 32 #8 16 32 <- mit einer Konfig von den anderen Configs prüfen
+    EPOCHS = 100 #40-50 <- mit einer Konfig von den anderen Configs prüfen
     
     def __init__(self, data_path, output_dir='cnn_results'):
         """
@@ -162,19 +162,20 @@ class CNNModel:
         
         print("\nTraining completed!")
     
-    def evaluate(self):
+    def evaluate(self): # hyperparameter tuning - hyperparameter optimization. via Loop Train function aufrufen für jede kombination
+        # auch in dem lstm model ändern
         """Evaluate model on test set."""
         print("\n" + "=" * 70)
         print("STEP 4: Evaluate Model")
         print("=" * 70)
         
-        train_loss, train_mae = self.model.evaluate(self.X_train, self.y_train, verbose=0)
+        #train_loss, train_mae = self.model.evaluate(self.X_train, self.y_train, verbose=0)
         val_loss, val_mae = self.model.evaluate(self.X_val, self.y_val, verbose=0)
-        test_loss, test_mae = self.model.evaluate(self.X_test, self.y_test, verbose=0)
+        #test_loss, test_mae = self.model.evaluate(self.X_test, self.y_test, verbose=0)
         
-        print(f"\nTraining   Loss: {train_loss:.6f}, MAE: {train_mae:.6f}")
+        #print(f"\nTraining   Loss: {train_loss:.6f}, MAE: {train_mae:.6f}")
         print(f"Validation Loss: {val_loss:.6f}, MAE: {val_mae:.6f}")
-        print(f"Test       Loss: {test_loss:.6f}, MAE: {test_mae:.6f}")
+        #print(f"Test       Loss: {test_loss:.6f}, MAE: {test_mae:.6f}")
         
         return test_loss, test_mae
     
@@ -184,8 +185,10 @@ class CNNModel:
         print("STEP 5: Generate Predictions")
         print("=" * 70)
         
-        self.predictions['train'] = self.model.predict(self.X_train, verbose=0)
-        self.predictions['val'] = self.model.predict(self.X_val, verbose=0)
+        #Predition nur auf dem optimierten Modell mit dem Testdatensatz machen
+
+        #self.predictions['train'] = self.model.predict(self.X_train, verbose=0)
+        #self.predictions['val'] = self.model.predict(self.X_val, verbose=0)
         self.predictions['test'] = self.model.predict(self.X_test, verbose=0)
         
         # Inverse transform to original scale
@@ -253,7 +256,7 @@ if __name__ == "__main__":
         os.path.dirname(__file__), 
         '..', 
         'stockData', 
-        'normalizedData', 
+        'preprocessedData',
         'SP500_historical_data.csv'
     )
     
