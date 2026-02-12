@@ -12,6 +12,24 @@ III. Modell Aufbau
 - Implementierung das Modell
   - Training
   - Hyperparameter tuning
+    - LSTM Modell mit folgenden Werten
+          LOOKBACK_WINDOW = 60  # L: number of previous time steps (60 days floating window)
+          LSTM_UNITS = [128, 64]  # Two LSTM layers
+          DROPOUT_RATE = 0.2 #0,4
+          DENSE_UNITS = 32 #64, 16 
+          LEARNING_RATE = 0.001 #0,005
+          BATCH_SIZE = 32 #8 16 32 <- mit einer Konfig von den anderen Configs prüfen
+          EPOCHS = 100 #50 <- mit einer Konfig von den anderen Configs prüfen
+      - CNN Modell mit folgenden Werten
+          LOOKBACK_WINDOW = 60  # L: 60 days floating window (same as LSTM for comparison)
+          CONV_FILTERS = [64, 128, 256]  # Progressive increase
+          KERNEL_SIZE = 5  # 5-point convolution filter - #3 ausprobieren
+          POOL_SIZE = 2 # 4
+          DROPOUT_RATE = 0.2 #0.4
+          DENSE_UNITS = 64
+          LEARNING_RATE = 0.001
+          BATCH_SIZE = 32 #8 16 32 <- mit einer Konfig von den anderen Configs prüfen
+          EPOCHS = 100 #40-50 <- mit einer Konfig von den anderen Configs prüfen
   - Test
   - Evaluierung
 IV. Training + Hyperparameter tuning

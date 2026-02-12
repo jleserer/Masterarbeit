@@ -6,13 +6,22 @@ PROJECT STRUCTURE:
 ==================
 
 models/
-├── 📄 data_preparation.py      ← Data loading & 65%-15%-20% split (GOODFELLOW)
-├── 🧠 lstm_model.py            ← LSTM implementation (128→64 units)
-├── 🧠 cnn_model.py             ← CNN implementation (64→128→256 filters)
-├── ⚖️ model_comparison.py      ← Train & compare both models
-├── ✓  test_models.py           ← Quick test of all modules
-├── 📖 README.md                ← Full technical documentation
-└── 📋 IMPLEMENTATION_SUMMARY.txt ← This project summary
+├── 📄 data_preparation.py          ← Data loading & 65%-15%-20% split (GOODFELLOW)
+├── 🧠 lstm_model.py                ← LSTM implementation (128→64 units)
+├── 🧠 cnn_model.py                 ← CNN implementation (64→128→256 filters)
+├── ⚖️ model_comparison.py          ← Train & compare both models
+├── 🔧 hyperparameter_tuning.py     ← Full grid search (CNN: 48, LSTM: 72 configs)
+├── 📊 evaluate_best_models.py      ← Evaluate best models on test set
+├── 📊 evaluate_lookback_window.py  ← Evaluate different lookback windows
+├── ✓  test_models.py               ← Quick test of all modules
+├── ✓  test_suite.py                ← Comprehensive unit test suite
+├── 📖 README.md                    ← Full technical documentation
+└── 📋 IMPLEMENTATION_SUMMARY.txt   ← This project summary
+
+results/
+├── CNN/SP500/                       ← CNN tuning results (48 experiments) + model
+├── LSTM/SP500/                      ← LSTM tuning results (72 experiments) + model
+└── evaluation/SP500/                ← Model comparison & evaluation plots
 
 QUICK START:
 ============
@@ -34,20 +43,20 @@ KEY PARAMETERS:
 
 BOTH MODELS:
   🔹 Data Split: 65% Train | 15% Val | 20% Test (Goodfellow)
-  🔹 Loopback Window: L=30 (features: Close, High, Low)
+  🔹 Loopback Window: L=60 (feature: Close)
   🔹 Batch Size: 32
   🔹 Epochs: 100 (with Early Stopping)
   🔹 Learning Rate: 0.001 (Adam)
   🔹 Dropout: 0.2
 
 LSTM:
-  🔹 Layers: LSTM(128) → LSTM(64) → Dense(32)
-  🔹 Parameters: 119,171
+  🔹 Layers: LSTM(128) → LSTM(64) → Dense(32) → Dense(1)
+  🔹 Parameters: 118,081
   🔹 Strength: Captures temporal dependencies
 
 CNN:
-  🔹 Layers: Conv1D(64,128,256) → Dense(64,32)
-  🔹 Parameters: 323,139
+  🔹 Layers: Conv1D(64,128,256) → Dense(64,32) → Dense(1)
+  🔹 Parameters: 322,433
   🔹 Strength: Hierarchical feature learning
 
 DATA FLOW:
@@ -64,7 +73,7 @@ preprocessedData/*.csv
     |        |        |
     +--------+--------+
            ↓
-    [Sequences L=30]
+    [Sequences L=60]
            ↓
     +--LSTM--+
     |        |
@@ -79,26 +88,35 @@ preprocessedData/*.csv
 OUTPUT DIRECTORIES:
 ===================
 
-After training, creates:
-  
-  lstm_results/
-    ├── lstm_model.h5                 ← Trained model
-    └── lstm_training_history.png     ← Loss/MAE plots
-  
-  cnn_results/
+After training/tuning, creates:
+
+  results/CNN/SP500/
+    ├── all_results.json              ← All grid search results
     ├── cnn_model.h5                  ← Trained model
-    └── cnn_training_history.png      ← Loss/MAE plots
-  
-  model_comparison_results.json       ← Performance comparison
+    ├── cnn_training_history.png      ← Loss/MAE plots
+    └── k*_p*_d*_b*_e*/              ← Individual experiment results
+
+  results/LSTM/SP500/
+    ├── all_results.json              ← All grid search results
+    ├── lstm_model.h5                 ← Trained model
+    ├── lstm_training_history.png     ← Loss/MAE plots
+    └── d*_u*_lr*_b*_e*/             ← Individual experiment results
+
+  results/evaluation/SP500/
+    ├── model_comparison.png          ← Side-by-side model comparison
+    ├── model_comparison_zoomed.png   ← Zoomed comparison
+    ├── model_comparison_results.json ← Performance comparison
+    ├── predictions_vs_actual.png     ← Prediction plots
+    └── training_history.png          ← Training history comparison
 
 FEATURES:
 =========
 
 ✅ Goodfellow 65%-15%-20% data split
-✅ Loopback-Window sequences (30-step temporal context)
+✅ Loopback-Window sequences (60-step temporal context)
 ✅ LSTM model with 2 stacked layers
 ✅ CNN model with 3 convolutional layers
-✅ Multi-output regression (Close, High, Low)
+✅ Single-output regression (Close)
 ✅ Early stopping & learning rate adaptation
 ✅ Inverse transform to original price scale
 ✅ Training history visualization
@@ -109,18 +127,16 @@ FEATURES:
 HYPERPARAMETER TUNING:
 =====================
 
-Edit class variables in lstm_model.py or cnn_model.py:
+Full grid search via hyperparameter_tuning.py:
+    $ python hyperparameter_tuning.py
 
-    LOOKBACK_WINDOW = 30      # Try: 10, 20, 60
-    LSTM_UNITS = [128, 64]    # Try: [256, 128], [64, 32]
-    DROPOUT_RATE = 0.2        # Try: 0.1, 0.3
-    LEARNING_RATE = 0.001     # Try: 0.005, 0.0001
-    BATCH_SIZE = 32           # Try: 16, 64
-    EPOCHS = 100              # Try: 50, 200
+CNN grid (48 configs): kernel (3,5) × pool (2,4) × dropout (0.2,0.4) × batch (8,16,32) × epochs (50,100)
+LSTM grid (72 configs): dropout (0.2,0.4) × dense_units (16,32,64) × lr (0.001,0.005) × batch (8,16,32) × epochs (50,100)
 
-CNN-specific:
-    CONV_FILTERS = [64, 128, 256]    # Try: [128, 256, 512]
-    KERNEL_SIZE = 5                   # Try: 3, 7
+Results saved to: results/CNN/SP500/ and results/LSTM/SP500/
+
+Evaluate best models:
+    $ python evaluate_best_models.py
 
 REFERENCES:
 ===========

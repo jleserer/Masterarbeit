@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python create_histograms.py:*)"
+      "Bash(python create_histograms.py:*)",
+      "Bash(timeout:*)",
+      "Bash(more:*)",
+      "Bash(python:*)",
+      "Bash(robocopy:*)",
+      "Bash(ls:*)"
     ]
   }
 }

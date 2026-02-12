@@ -28,12 +28,12 @@ L = 60 (Loopback-Window Länge)
 Input:  X[i:i+L] = Sequenz von L aufeinanderfolgenden Zeitpunkten
 Output: y[i+L]   = Zielwert zum Zeitpunkt (i+L)
 
-Features pro Zeitpunkt: [Close, High, Low]
+Feature pro Zeitpunkt: [Close]
 ```
 
 Dies erzeugt Sequenzen der Form:
-- **X shape**: (n_sequences, 60, 3) - 60 Zeitschritte × 3 Features
-- **y shape**: (n_sequences, 3) - Vorhersage der 3 Features
+- **X shape**: (n_sequences, 60, 1) - 60 Zeitschritte × 1 Feature
+- **y shape**: (n_sequences, 1) - Vorhersage des Close-Preises
 
 ## LSTM-Modell
 
@@ -54,14 +54,14 @@ Dense(32, activation='relu')
     ↓
 Dropout(0.2)
     ↓
-Dense(3, activation='linear') [Output: Close, High, Low]
+Dense(1, activation='linear') [Output: Close]
 ```
 
 ### Hyperparameter
 
 | Parameter | Wert | Begründung |
 |-----------|------|-----------|
-| Lookback Window | 60 | 2 Monate Trading (ca. 20 Business Days) |
+| Lookback Window | 60 | Ca. 3 Monate Trading Days |
 | LSTM Units | 128, 64 | Progressiv abnehmende Komplexität |
 | Dropout Rate | 0.2 | Regularisierung zur Vermeidung von Overfitting |
 | Learning Rate | 0.001 | Standard für Adam Optimizer |
@@ -80,7 +80,7 @@ Dense(3, activation='linear') [Output: Close, High, Low]
 ### Architektur
 
 ```
-Input Layer (60, 3)
+Input Layer (60, 1)
     ↓
 Conv1D(64, kernel=5, padding='same') + ReLU
     ↓
@@ -106,7 +106,7 @@ Dropout(0.2)
     ↓
 Dense(32, activation='relu')
     ↓
-Dense(3, activation='linear') [Output: Close, High, Low]
+Dense(1, activation='linear') [Output: Close]
 ```
 
 ### Hyperparameter
@@ -198,6 +198,27 @@ Selbe Interface wie LSTM für Vergleichbarkeit.
 - Erstellt JSON-Report
 - Speichert Ergebnisse in separaten Ordnern
 
+### `hyperparameter_tuning.py`
+
+**FullGridSearchTuner Klasse:**
+- Vollständiger Grid Search über alle Hyperparameter-Kombinationen
+- CNN: 48 Konfigurationen (kernel × pool × dropout × batch × epochs)
+- LSTM: 72 Konfigurationen (dropout × dense_units × lr × batch × epochs)
+- Resume-Support für unterbrochene Durchläufe
+- Ergebnisse in `results/CNN/SP500/` und `results/LSTM/SP500/`
+
+### `evaluate_best_models.py`
+
+**Evaluierungs-Script:**
+- Lädt die besten CNN- und LSTM-Konfigurationen
+- Evaluiert auf dem Test-Set
+- Erzeugt Vergleichs-Visualisierungen in `results/evaluation/SP500/`
+
+### `evaluate_lookback_window.py`
+
+- Evaluiert verschiedene Lookback-Window-Größen
+- Vergleicht Modellperformance bei unterschiedlichen Zeitfenstern
+
 ## Verwendung
 
 ### Einzelnes Modell trainieren
@@ -217,9 +238,25 @@ python model_comparison.py
 ```
 
 Dies erzeugt:
-- `lstm_results_SP500/`: LSTM-Modell und Plots
-- `cnn_results_SP500/`: CNN-Modell und Plots
-- `model_comparison_results.json`: Vergleichsergebnisse
+- `results/LSTM/SP500/`: LSTM-Modell und Plots
+- `results/CNN/SP500/`: CNN-Modell und Plots
+- `results/evaluation/SP500/model_comparison_results.json`: Vergleichsergebnisse
+
+### Hyperparameter-Tuning (Grid Search)
+
+```bash
+python hyperparameter_tuning.py
+```
+
+Dies führt einen vollständigen Grid Search durch und speichert alle Experiment-Ergebnisse.
+
+### Beste Modelle evaluieren
+
+```bash
+python evaluate_best_models.py
+```
+
+Erzeugt Evaluierungs-Plots in `results/evaluation/SP500/`.
 
 ## Ausgaben
 
@@ -258,13 +295,11 @@ KERNEL_SIZE = 3
 
 ## Inverse Transform
 
-Da das Zielvektor multi-dimensional ist (Close, High, Low), wird für alle Komponenten die Inverse Transform angewendet:
+Die normalisierten Vorhersagen werden mittels Inverse Transform zurück in die ursprüngliche Preiseskala konvertiert:
 
 ```python
 predictions_original = preparator.inverse_transform(predictions_normalized)
 ```
-
-Dies konvertiert die normalisierten Vorhersagen zurück in die ursprüngliche Preiseskala.
 
 ## Callbacks
 

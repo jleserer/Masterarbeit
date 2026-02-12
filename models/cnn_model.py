@@ -42,7 +42,7 @@ class CNNModel:
     BATCH_SIZE = 32 #8 16 32 <- mit einer Konfig von den anderen Configs prüfen
     EPOCHS = 100 #40-50 <- mit einer Konfig von den anderen Configs prüfen
     
-    def __init__(self, data_path, output_dir='cnn_results'):
+    def __init__(self, data_path, output_dir=os.path.join('results', 'CNN', 'SP500')):
         """
         Args:
             data_path: Path to CSV file
@@ -260,5 +260,5 @@ if __name__ == "__main__":
         'SP500_historical_data.csv'
     )
     
-    cnn = CNNModel(data_path, output_dir='cnn_results')
+    cnn = CNNModel(data_path, output_dir=os.path.join('results', 'CNN', 'SP500'))
     cnn.run_full_pipeline()

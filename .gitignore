@@ -1799,5 +1799,5 @@ cnn_results_SP500/cnn_training_history.png
 lstm_results_SP500/lstm_model.h5
 lstm_results_SP500/lstm_training_history.png
 model_comparison_results.json
-.gitignore
-.gitignore
+.claude/settings.local.json
+models/__pycache__/data_preparation.cpython-313.pyc

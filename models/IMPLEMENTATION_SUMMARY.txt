@@ -16,28 +16,28 @@ REQUIREMENTS FULFILLED
    - MinMax normalization to [0, 1]
 
 ✓ 2. Loopback-Window Sequences
-   - Window length L = 30 (trading days)
-   - Format: (30 timesteps, 3 features) → (3 outputs)
-   - Features: Close, High, Low
+   - Window length L = 60 (trading days)
+   - Format: (60 timesteps, 1 feature) → (1 output)
+   - Feature: Close
    - Fully implemented in data_preparation.py
 
 ✓ 3. LSTM Model
    - Architecture: 2 stacked LSTM layers (128, 64 units)
    - Parameters: Dropout 0.2, Learning rate 0.001
    - Training: Adam optimizer, Early Stopping, LR reduction
-   - Output: Multi-output regression (Close, High, Low)
-   - Model size: 119,171 parameters
+   - Output: Single-output regression (Close)
+   - Model size: 118,081 parameters
 
 ✓ 4. CNN Model
    - Architecture: 3 Conv1D layers (64, 128, 256 filters)
    - Kernel size: 5, Max Pooling 2
    - Parameters: Dropout 0.2, Learning rate 0.001
-   - Output: Multi-output regression (Close, High, Low)
-   - Model size: 323,139 parameters
+   - Output: Single-output regression (Close)
+   - Model size: 322,433 parameters
 
 ✓ 5. Architecture & Hyperparameter Determination
    - Designed based on paper comparison techniques
-   - Both models use same Loopback Window (L=30)
+   - Both models use same Loopback Window (L=60)
    - Hyperparameters optimized for stock price prediction
    - Both include regularization and adaptive learning rate
 
@@ -53,13 +53,13 @@ models/
 │
 ├── lstm_model.py
 │   ├── LSTMModel class (complete pipeline)
-│   ├── Architecture: LSTM(128) → LSTM(64) → Dense(32) → Output(3)
+│   ├── Architecture: LSTM(128) → LSTM(64) → Dense(32) → Output(1)
 │   ├── Training with callbacks (EarlyStopping, ReduceLROnPlateau)
 │   └── Evaluation and visualization
 │
 ├── cnn_model.py
 │   ├── CNNModel class (complete pipeline)
-│   ├── Architecture: Conv1D × 3 → Dense(64,32) → Output(3)
+│   ├── Architecture: Conv1D × 3 → Dense(64,32) → Output(1)
 │   ├── Max Pooling for dimensionality reduction
 │   └── Same callbacks as LSTM for fair comparison
 │
@@ -68,17 +68,33 @@ models/
 │   ├── Measures training time and performance
 │   └── Generates JSON report
 │
-├── test_models.py
+├── hyperparameter_tuning.py
+│   ├── FullGridSearchTuner class (full grid search)
+│   ├── CNN: 48 configs (kernel × pool × dropout × batch × epochs)
+│   ├── LSTM: 72 configs (dropout × dense_units × lr × batch × epochs)
+│   └── Resume support for interrupted runs
+│
+├── evaluate_best_models.py
+│   ├── Loads best CNN and LSTM configurations
+│   ├── Evaluates on test set
+│   └── Generates comparison visualizations
+│
+├── evaluate_lookback_window.py
+│   └── Evaluates different lookback window sizes
+│
+├── test_models.py / test_suite.py
 │   ├── Validates all modules work correctly
-│   └── Runs model building test
+│   └── Comprehensive unit tests (28 tests)
 │
 ├── README.md
-│   ├── Complete documentation
-│   ├── Architecture details
-│   ├── Hyperparameter rationale
-│   └── Usage instructions
+│   └── Full technical documentation
 │
 └── IMPLEMENTATION_SUMMARY.txt (this file)
+
+results/
+├── CNN/SP500/          ← CNN tuning experiments + trained model
+├── LSTM/SP500/         ← LSTM tuning experiments + trained model
+└── evaluation/SP500/   ← Model comparison and evaluation plots
 
 ===============================================================================
 TESTED FEATURES
@@ -86,24 +102,24 @@ TESTED FEATURES
 
 ✓ Data loading from preprocessedData/SP500_historical_data.csv
   - Original size: 9564 samples × 4 columns
-  - After cleaning: 9562 samples × 3 features
+  - After cleaning: 9562 samples × 1 feature (Close)
   - Train: 6215 samples (65.0%)
   - Val:   1434 samples (15.0%)
   - Test:  1913 samples (20.0%)
 
 ✓ Sequence generation
-  - Training sequences: (6185, 30, 3)
-  - Validation sequences: (1404, 30, 3)
-  - Test sequences: (1883, 30, 3)
+  - Training sequences: (6155, 60, 1)
+  - Validation sequences: (1374, 60, 1)
+  - Test sequences: (1853, 60, 1)
 
 ✓ LSTM Model Building
-  - Total parameters: 119,171
-  - Trainable parameters: 119,171
+  - Total parameters: 118,081
+  - Trainable parameters: 118,081
   - No errors during model construction
 
 ✓ CNN Model Building
-  - Total parameters: 323,139
-  - Trainable parameters: 323,139
+  - Total parameters: 322,433
+  - Trainable parameters: 322,433
   - No errors during model construction
 
 ===============================================================================
@@ -116,23 +132,26 @@ USAGE INSTRUCTIONS
 
 2. TRAIN LSTM ONLY
    > python lstm_model.py
-   Output: lstm_results/ directory with model and plots
+   Output: results/LSTM/SP500/ directory with model and plots
 
 3. TRAIN CNN ONLY
    > python cnn_model.py
-   Output: cnn_results/ directory with model and plots
+   Output: results/CNN/SP500/ directory with model and plots
 
 4. COMPARE BOTH MODELS
    > python model_comparison.py
    Output: 
-   - lstm_results_SP500/ directory
-   - cnn_results_SP500/ directory
-   - model_comparison_results.json
+   - results/LSTM/SP500/ directory
+   - results/CNN/SP500/ directory
+   - results/evaluation/SP500/model_comparison_results.json
 
-5. CUSTOM PARAMETERS
-   Edit LSTM_UNITS, DROPOUT_RATE, LEARNING_RATE, EPOCHS in:
-   - lstm_model.py (LSTMModel class)
-   - cnn_model.py (CNNModel class)
+5. HYPERPARAMETER TUNING (full grid search)
+   > python hyperparameter_tuning.py
+   Output: results/CNN/SP500/ and results/LSTM/SP500/
+
+6. EVALUATE BEST MODELS
+   > python evaluate_best_models.py
+   Output: results/evaluation/SP500/
 
 ===============================================================================
 ARCHITECTURE DETAILS
@@ -140,64 +159,64 @@ ARCHITECTURE DETAILS
 
 LSTM MODEL:
 -----------
-Input (30, 3)
+Input (60, 1)
   ↓
-LSTM(128, return_sequences=True)  [67,584 params]
-  ↓
-Dropout(0.2)
-  ↓
-LSTM(64, return_sequences=False)  [49,408 params]
+LSTM(128, return_sequences=True)
   ↓
 Dropout(0.2)
   ↓
-Dense(32, relu)  [2,080 params]
+LSTM(64, return_sequences=False)
   ↓
 Dropout(0.2)
   ↓
-Dense(3, linear) [99 params]  ← Output: Close, High, Low
+Dense(32, relu)
   ↓
-Output (3,)
+Dropout(0.2)
+  ↓
+Dense(1, linear) ← Output: Close
+  ↓
+Output (1,)
 
-Total: 119,171 trainable parameters
+Total: 118,081 trainable parameters
 
 CNN MODEL:
 -----------
-Input (30, 3)
+Input (60, 1)
   ↓
-Conv1D(64, kernel=5, padding='same') [1,024 params]
-  ↓
-MaxPooling1D(2)
-  ↓
-Dropout(0.2)
-  ↓
-Conv1D(128, kernel=5, padding='same') [41,088 params]
+Conv1D(64, kernel=5, padding='same')
   ↓
 MaxPooling1D(2)
   ↓
 Dropout(0.2)
   ↓
-Conv1D(256, kernel=5, padding='same') [164,096 params]
+Conv1D(128, kernel=5, padding='same')
+  ↓
+MaxPooling1D(2)
   ↓
 Dropout(0.2)
   ↓
-Flatten → Dense(64, relu) [114,752 params]
+Conv1D(256, kernel=5, padding='same')
   ↓
 Dropout(0.2)
   ↓
-Dense(32, relu) [2,080 params]
+Flatten → Dense(64, relu)
   ↓
-Dense(3, linear) [99 params]  ← Output: Close, High, Low
+Dropout(0.2)
   ↓
-Output (3,)
+Dense(32, relu)
+  ↓
+Dense(1, linear) ← Output: Close
+  ↓
+Output (1,)
 
-Total: 323,139 trainable parameters
+Total: 322,433 trainable parameters
 
 ===============================================================================
 HYPERPARAMETER CHOICES
 ===============================================================================
 
 COMMON PARAMETERS:
-  - Lookback Window: 30 (1 month trading days)
+  - Lookback Window: 60 (approx. 3 months trading days)
   - Batch Size: 32
   - Epochs: 100 (with Early Stopping)
   - Learning Rate: 0.001 (Adam optimizer)
@@ -222,7 +241,7 @@ CNN SPECIFIC:
 
 INVERSE TRANSFORM:
   - All predictions are inverse-transformed to original price scale
-  - Applied to all 3 features (Close, High, Low)
+  - Applied to Close price
   - Uses fitted MinMaxScaler from training data
 
 ===============================================================================
@@ -249,8 +268,8 @@ FEATURES IMPLEMENTED
 ===============================================================================
 
 ✓ Goodfellow 65%-15%-20% split
-✓ Loopback-Window sequences (L=30)
-✓ Multi-output regression (Close, High, Low)
+✓ Loopback-Window sequences (L=60)
+✓ Single-output regression (Close)
 ✓ LSTM with stacked layers and dropout
 ✓ CNN with Conv1D layers and max pooling
 ✓ Inverse transform for predictions
@@ -291,7 +310,11 @@ models/data_preparation.py .................. Data loading & split
 models/lstm_model.py ........................ LSTM implementation
 models/cnn_model.py ......................... CNN implementation
 models/model_comparison.py .................. Comparison script
-models/test_models.py ....................... Testing script
+models/hyperparameter_tuning.py ....... Full grid search tuning
+models/evaluate_best_models.py ............. Best model evaluation
+models/evaluate_lookback_window.py ......... Lookback window evaluation
+models/test_models.py ....................... Quick testing script
+models/test_suite.py ........................ Comprehensive test suite
 models/README.md ............................ Full documentation
 models/IMPLEMENTATION_SUMMARY.txt .......... This file
 
@@ -304,8 +327,8 @@ Test Results: ALL PASSED ✓
 
 ✓ Data preparation module loads and splits correctly
 ✓ Sequence generation creates proper (L, n_features) shapes
-✓ LSTM model builds without errors (119k parameters)
-✓ CNN model builds without errors (323k parameters)
+✓ LSTM model builds without errors (118k parameters)
+✓ CNN model builds without errors (322k parameters)
 ✓ Both models compatible with training pipeline
 
 Ready for full training and evaluation.

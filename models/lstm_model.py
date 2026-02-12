@@ -35,7 +35,7 @@ class LSTMModel:
     BATCH_SIZE = 32 #8 16 32 <- mit einer Konfig von den anderen Configs prüfen
     EPOCHS = 100 #50 <- mit einer Konfig von den anderen Configs prüfen
     
-    def __init__(self, data_path, output_dir='lstm_results'):
+    def __init__(self, data_path, output_dir=os.path.join('results', 'LSTM', 'SP500')):
         """
         Args:
             data_path: Path to CSV file
@@ -232,5 +232,5 @@ if __name__ == "__main__":
         'SP500_historical_data.csv'
     )
     
-    lstm = LSTMModel(data_path, output_dir='lstm_results')
+    lstm = LSTMModel(data_path, output_dir=os.path.join('results', 'LSTM', 'SP500'))
     lstm.run_full_pipeline()

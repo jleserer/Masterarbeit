@@ -6,14 +6,17 @@ Dieses Repository enthält die Implementierung von Deep Learning Modellen (LSTM 
 
 ```
 Masterarbeit/
-├── models/                   # Deep Learning Modelle und Implementierungen
-│   ├── lstm_model.py         # LSTM-Modell (60-Tage floating window)
-│   ├── cnn_model.py          # CNN-Modell (60-Tage floating window)
-│   ├── data_preparation.py   # Datenaufbereitung und Sequenzerzeugung
-│   ├── model_comparison.py   # Vergleich der Modelle
-│   ├── sliceWindow.py        # Referenzimplementierung für floating window
-│   ├── test_suite.py         # Umfassende Tests
-│   └── README.md             # Detaillierte Modell-Dokumentation
+├── models/                          # Deep Learning Modelle und Implementierungen
+│   ├── lstm_model.py                # LSTM-Modell (60-Tage floating window)
+│   ├── cnn_model.py                 # CNN-Modell (60-Tage floating window)
+│   ├── data_preparation.py          # Datenaufbereitung und Sequenzerzeugung
+│   ├── model_comparison.py          # Vergleich der Modelle
+│   ├── hyperparameter_tuning.py     # Full Grid Search (CNN: 48, LSTM: 72 Configs)
+│   ├── evaluate_best_models.py      # Evaluation der besten Modelle
+│   ├── evaluate_lookback_window.py  # Lookback-Window Evaluation
+│   ├── sliceWindow.py               # Referenzimplementierung für floating window
+│   ├── test_suite.py                # Umfassende Tests
+│   └── README.md                    # Detaillierte Modell-Dokumentation
 │
 ├── stockData/                # Aktiendaten und Datenverarbeitung
 │   ├── sourceData/           # Rohdaten von Yahoo Finance
@@ -23,9 +26,10 @@ Masterarbeit/
 │   ├── plots/                # Datenvisualisierungen
 │   └── characterize_excerpt_data.py
 │
-├── lstm_results_SP500/       # LSTM-Trainingsergebnisse für S&P 500
-├── cnn_results_SP500/        # CNN-Trainingsergebnisse für S&P 500
-├── model_comparison_results.json  # Vergleichsergebnisse
+├── results/                  # Alle Modell-Ergebnisse
+│   ├── CNN/SP500/            # CNN-Tuning- und Trainingsergebnisse für S&P 500
+│   ├── LSTM/SP500/           # LSTM-Tuning- und Trainingsergebnisse für S&P 500
+│   └── evaluation/SP500/     # Modellvergleich und Evaluierungsplots
 │
 ├── lehrmaterial/             # Lehrmaterialien und Übungen
 └── profCommunication/        # Kommunikation mit Professor
@@ -45,6 +49,8 @@ Hauptdateien:
 - `cnn_model.py`: CNN-Modell mit 60-Tage Loopback Window
 - `data_preparation.py`: Datenaufbereitung, Normalisierung, Train-Val-Test Split (65%-15%-20%)
 - `model_comparison.py`: Automatisierter Vergleich beider Modelle
+- `hyperparameter_tuning.py`: Full Grid Search (CNN: 48, LSTM: 72 Konfigurationen)
+- `evaluate_best_models.py`: Evaluation der besten Modelle auf dem Test-Set
 - `sliceWindow.py`: Referenzimplementierung für das floating window Konzept
 
 ### 2. Stock Data Directory (`stockData/`)
@@ -59,9 +65,9 @@ Enthält alle Aktiendaten in verschiedenen Verarbeitungsstufen:
 
 ### 3. Ergebnisse
 
-- **lstm_results_SP500/**: Trainierte LSTM-Modelle, Plots, Metriken
-- **cnn_results_SP500/**: Trainierte CNN-Modelle, Plots, Metriken
-- **model_comparison_results.json**: JSON-Datei mit Vergleichsmetriken
+- **results/CNN/SP500/**: CNN-Hyperparameter-Tuning-Ergebnisse (48 Configs) und trainiertes Modell
+- **results/LSTM/SP500/**: LSTM-Hyperparameter-Tuning-Ergebnisse (72 Configs) und trainiertes Modell
+- **results/evaluation/SP500/**: Evaluierungsplots (Vorhersagen, Modellvergleich)
 
 ## Schnellstart
 
@@ -89,7 +95,7 @@ cd models
 python model_comparison.py
 ```
 
-Dies führt beide Modelle aus und erstellt einen detaillierten Vergleichsbericht in `model_comparison_results.json`.
+Dies führt beide Modelle aus und erstellt einen detaillierten Vergleichsbericht in `results/evaluation/SP500/model_comparison_results.json`.
 
 ## Modell-Architektur
 
@@ -98,14 +104,14 @@ Beide Modelle verwenden:
 - **Train-Val-Test Split**: 65%-15%-20% (nach Goodfellow et al., 2016)
 - **Optimizer**: Adam (Learning Rate: 0.001)
 - **Loss**: MSE (Mean Squared Error)
-- **Target**: Close-Preis Vorhersage
+- **Target**: Close-Preis (Single-Output)
 
-### LSTM
+### LSTM (118,081 Parameter)
 - 2 LSTM-Layer (128, 64 Units)
 - Dropout: 0.2
 - Dense Layer: 32 Units
 
-### CNN
+### CNN (322,433 Parameter)
 - 3 Conv1D-Layer (64, 128, 256 Filter)
 - Kernel Size: 5
 - Max Pooling: 2
