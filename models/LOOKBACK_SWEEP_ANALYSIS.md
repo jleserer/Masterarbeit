@@ -2,7 +2,7 @@
 
 ## 🎯 Projekt-Übersicht
 
-Durchfassende Analyse der Loopback-Window-Sensitivität (L = 1 bis 60) mit optimalen Konfigurationen aus 24h Hyperparameter-Suche, gemäß Anforderungen von Prof. Saffer.
+Durchfassende Analyse der Loopback-Window-Sensitivität (L = 1 bis 60) mit optimalen Konfigurationen aus Hyperparameter-Suche.
 
 **Zwei Hauptabbildungen:**
 1. MAE vs Lookback Window L (Parameter-Sweep über alle L-Werte)
@@ -98,8 +98,6 @@ Durchfassende Analyse der Loopback-Window-Sensitivität (L = 1 bis 60) mit optim
 
 ## 📈 Sequenzen-Bildung (Backward-Looking Window)
 
-Nach Prof. Saffer's Definition:
-
 ```
 Für Zeitpunkt t und Fenster L:
 
@@ -163,7 +161,6 @@ L=60 produziert erste Vorhersage an Tag 61
 - Y-Achse: Test MAE
 - Zeigt beide Modelle (LSTM blau, CNN rot)
 - Beste L-Werte gekennzeichnet mit Annotationen
-- Professionelle Formatierung für Thesis
 
 ### ✓ Abbildung 2a: LSTM Vorhersagen (l* = 46 + Top 2)
 - **Zeitreihen (normalisiert)**: `02_LSTM_predictions_vs_actual_timeseries.png`
@@ -245,20 +242,7 @@ Dense(32, activation='relu')
 Dense(1, activation='linear')  # Output
 ```
 
----
-
-## ⏱️ Laufzeit & Performance
-
-- **Total Laufzeit**: 3h 45min
-- **Pro L**: ~3.75 min durchschnittlich
-- **Training**: Mit Early Stopping & ReduceLROnPlateau
-- **Hardware**: GPU-beschleunigt (TensorFlow/Keras)
-
----
-
-## 🎓 Verwendung in Master-Thesis
-
-### Empfehlung für Prof. Saffer:
+### Zusammenfassung
 
 > "Die Parameter-Sweep-Analyse über L=1..60 zeigt deutlich, dass:
 > 
@@ -282,8 +266,4 @@ Dense(1, activation='linear')  # Output
 | `results/lookback_sweep/lookback_evaluation_sweep/` | dir | Output-Verzeichnis |
 | `LOOKBACK_SWEEP_ANALYSIS.md` | .md | Dieses Dokument |
 
----
 
-**Evaluation abgeschlossen**: 2026-02-18 09:58:22  
-**Status**: ✅ FERTIG  
-**Für Prof. Saffer bereit**

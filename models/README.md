@@ -2,6 +2,57 @@
 
 Implementierung von LSTM und CNN Modellen zur Vorhersage von Aktienkursen basierend auf historischen Daten.
 
+## Quick Start
+
+```bash
+# 1. Alles testen
+python test_models.py
+
+# 2. LSTM trainieren
+python lstm_model.py
+
+# 3. CNN trainieren
+python cnn_model.py
+
+# 4. Beide vergleichen
+python model_comparison.py
+
+# 5. Hyperparameter-Tuning (Grid Search)
+python hyperparameter_tuning.py
+
+# 6. Beste Modelle evaluieren
+python evaluate_best_models.py
+
+# 7. Lookback-Window-Sweep (L=1..60)
+python evaluate_lookback_window_sweep.py
+```
+
+## Projektstruktur
+
+```
+models/
+├── data_preparation.py             ← Data loading & 65%-15%-20% Split (Goodfellow)
+├── lstm_model.py                   ← LSTM-Implementierung (128→64 Units)
+├── cnn_model.py                    ← CNN-Implementierung (64→128→256 Filter)
+├── model_comparison.py             ← Training & Vergleich beider Modelle
+├── hyperparameter_tuning.py        ← Full Grid Search (CNN: 48, LSTM: 72 Configs)
+├── evaluate_best_models.py         ← Beste Modelle auf Test-Set evaluieren
+├── evaluate_lookback_window_sweep.py ← Lookback-Window-Sweep L=1..60
+├── test_models.py                  ← Schnelltest aller Module
+├── test_suite.py                   ← Umfassende Unit-Test-Suite (28 Tests)
+└── README.md                       ← Dieses Dokument
+
+results/
+├── CNN/SP500/                      ← CNN Tuning-Ergebnisse (48 Experimente) + Modell
+├── LSTM/SP500/                     ← LSTM Tuning-Ergebnisse (72 Experimente) + Modell
+├── evaluation/SP500/               ← Modellvergleich & Evaluierungs-Plots
+└── lookback_sweep/lookback_evaluation_sweep/  ← Window-Sweep-Analyse
+    ├── 01_mae_vs_lookback_window.png
+    ├── 02/03/04_LSTM_*.png
+    ├── 02/03/04_CNN_*.png
+    └── lookback_evaluation_results.json
+```
+
 ## Überblick
 
 Dieses Projekt implementiert zwei Deep Learning Modelle:
@@ -260,10 +311,30 @@ Erzeugt Evaluierungs-Plots in `results/evaluation/SP500/`.
 
 ## Ausgaben
 
-Jedes Modell erzeugt:
-- `*_model.h5`: Trainiertes Modell (Keras format)
-- `*_training_history.png`: Loss und MAE Plots
-- Vorhersagen (normalisiert und original)
+### results/CNN/SP500/
+```
+├── all_results.json              ← Alle Grid-Search-Ergebnisse
+├── cnn_model.h5                  ← Trainiertes Modell
+├── cnn_training_history.png      ← Loss/MAE Plots
+└── k*_p*_d*_b*_e*/              ← Einzelne Experiment-Ergebnisse
+```
+
+### results/LSTM/SP500/
+```
+├── all_results.json              ← Alle Grid-Search-Ergebnisse
+├── lstm_model.h5                 ← Trainiertes Modell
+├── lstm_training_history.png     ← Loss/MAE Plots
+└── d*_u*_lr*_b*_e*/             ← Einzelne Experiment-Ergebnisse
+```
+
+### results/evaluation/SP500/
+```
+├── model_comparison.png          ← Side-by-Side Modellvergleich
+├── model_comparison_zoomed.png   ← Gezoomter Vergleich
+├── model_comparison_results.json ← Performance-Vergleich
+├── predictions_vs_actual.png     ← Vorhersage-Plots
+└── training_history.png          ← Trainings-Verlauf Vergleich
+```
 
 ## Hyperparameter-Anpassung
 
@@ -314,6 +385,62 @@ Beide Modelle verwenden:
    - Factor: 0.5
    - Patience: 5 Epochen
    - Min LR: 1e-6
+
+## Datenfluss
+
+```
+preprocessedData/*.csv
+        ↓
+  [Data Preparation]
+        ↓
+    +--------+--------+--------+
+    |        |        |        |
+   65%      15%      20%
+  Train    Val      Test
+    |        |        |
+    +--------+--------+
+           ↓
+    [Sequences L=60]
+           ↓
+    +--LSTM--+
+    |        |
+    +--CNN---+
+           ↓
+      [Predictions]
+           ↓
+    [Inverse Transform]
+           ↓
+    [Original Price Scale]
+```
+
+## Test-Ergebnisse
+
+**Datum**: 2025-12-15 | **Status**: ALLE 28/28 TESTS BESTANDEN
+
+| Kategorie | Tests | Status |
+|-----------|-------|--------|
+| Data Preparation | 6/6 | ✅ |
+| Sequence Creation | 4/4 | ✅ |
+| LSTM Model | 7/7 | ✅ |
+| CNN Model | 7/7 | ✅ |
+| Model Comparison | 4/4 | ✅ |
+
+**Verifizierte Daten:**
+
+| Set | Samples | Anteil |
+|-----|---------|--------|
+| Gesamt | 9.562 | 100% |
+| Train | 6.215 | 65% |
+| Validation | 1.434 | 15% |
+| Test | 1.913 | 20% |
+
+```
+# Tests ausführen:
+python test_suite.py
+python -m unittest test_suite.TestLSTMModel
+python -m unittest test_suite.TestCNNModel
+python -m unittest test_suite.TestDataPreparation
+```
 
 ## Referenzen
 
