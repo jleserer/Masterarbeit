@@ -2,6 +2,7 @@ lehrmaterial/
 models/__pycache__/
 models/_deprecated/
 profCommunication/
+.claude/
 .gitignore
 cnn_results_SP500/cnn_model.h5
 cnn_results_SP500/cnn_training_history.png
