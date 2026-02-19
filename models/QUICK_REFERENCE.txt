@@ -12,16 +12,21 @@ models/
 ├── ⚖️ model_comparison.py          ← Train & compare both models
 ├── 🔧 hyperparameter_tuning.py     ← Full grid search (CNN: 48, LSTM: 72 configs)
 ├── 📊 evaluate_best_models.py      ← Evaluate best models on test set
-├── 📊 evaluate_lookback_window.py  ← Evaluate different lookback windows
+├── 📊 evaluate_lookback_window_sweep.py  ← Lookback window sweep L=1..60 ⭐
 ├── ✓  test_models.py               ← Quick test of all modules
 ├── ✓  test_suite.py                ← Comprehensive unit test suite
 ├── 📖 README.md                    ← Full technical documentation
-└── 📋 IMPLEMENTATION_SUMMARY.txt   ← This project summary
+├── 📋 IMPLEMENTATION_SUMMARY.txt   ← Project summary
+├── 📋 LOOKBACK_SWEEP_QUICKREF.txt  ← Sweep analysis reference ⭐
+└── 📋 LOOKBACK_SWEEP_ANALYSIS.md   ← Comprehensive sweep results ⭐
 
 results/
 ├── CNN/SP500/                       ← CNN tuning results (48 experiments) + model
 ├── LSTM/SP500/                      ← LSTM tuning results (72 experiments) + model
-└── evaluation/SP500/                ← Model comparison & evaluation plots
+├── evaluation/SP500/                ← Model comparison & evaluation plots
+└── lookback_sweep/lookback_evaluation_sweep/  ← Window sweep analysis ⭐
+    ├── *.png                        ← MAE & prediction plots
+    └── lookback_evaluation_results.json  ← All L values & MAE
 
 QUICK START:
 ============
@@ -159,11 +164,16 @@ See README.md for:
   ✓ Extended usage examples
   ✓ Future improvements
 
-See IMPLEMENTATION_SUMMARY.txt for:
-  ✓ Complete feature checklist
-  ✓ Test results
-  ✓ Module structure
-  ✓ Next steps
+See LOOKBACK_SWEEP_ANALYSIS.md for:
+  ✓ Complete parameter sweep results (L=1..60)
+  ✓ MAE vs lookback window analysis
+  ✓ Best configurations for each model
+  ✓ Optimal M settings by architecture
+
+See LOOKBACK_SWEEP_QUICKREF.txt for:
+  ✓ Quick reference of sweep outcomes
+  ✓ Top 5 results for each model
+  ✓ Output file locations
 
 ================================================================================
                         Ready for Training! 🚀
