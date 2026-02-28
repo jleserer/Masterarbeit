@@ -24,17 +24,18 @@ class DataPreparator:
     Predicts only Close price (single output).
     """
 
-    def __init__(self, data_path, target_columns=None):
+    def __init__(self, data_path, target_columns=None, start_date=None):
         """
         Args:
             data_path: Path to CSV file
             target_columns: List of columns to use (default: ['Close'])
+            start_date: Optional filter to only use data from this date onwards (e.g. '2015-01-01')
         """
         self.data_path = data_path
         self.target_columns = target_columns or ['Close']
+        self.start_date = start_date
         self.scaler = MinMaxScaler(feature_range=(0, 1))
         self.data = None
-        self.scaled_data = None
         self.train_data = None
         self.val_data = None
         self.test_data = None
@@ -46,23 +47,32 @@ class DataPreparator:
         self.data = pd.read_csv(self.data_path)
         print(f"Loaded data shape: {self.data.shape}")
 
+        # Filter by start date if specified (date is in first column)
+        if self.start_date is not None:
+            dates = pd.to_datetime(self.data.iloc[:, 0], errors='coerce')
+            self.data = self.data[dates >= pd.Timestamp(self.start_date)].reset_index(drop=True)
+            print(f"Filtered to data from {self.start_date}: {self.data.shape}")
+
         # Select target columns
         selected_data = self.data[self.target_columns].apply(pd.to_numeric, errors='coerce')
         selected_data = selected_data.dropna()
         print(f"Selected data shape after cleaning: {selected_data.shape}")
 
-        # Normalize to [0, 1]
-        self.scaled_data = self.scaler.fit_transform(selected_data)
-        print(f"Scaled data shape: {self.scaled_data.shape}")
-
-        # Split: 65% train, 15% val, 20% test (sequential split for time series)
-        n = len(self.scaled_data)
+        # Sequential split for time series (no shuffling)
+        n = len(selected_data)
         train_end = int(0.65 * n)
         val_end = train_end + int(0.15 * n)
 
-        self.train_data = self.scaled_data[:train_end]
-        self.val_data = self.scaled_data[train_end:val_end]
-        self.test_data = self.scaled_data[val_end:]
+        train_raw = selected_data.values[:train_end]
+        val_raw   = selected_data.values[train_end:val_end]
+        test_raw  = selected_data.values[val_end:]
+
+        # Fit scaler ONLY on training data to avoid data leakage.
+        # Val/Test may be slightly outside [0,1] if prices changed significantly.
+        self.scaler.fit(train_raw)
+        self.train_data = self.scaler.transform(train_raw)
+        self.val_data   = self.scaler.transform(val_raw)
+        self.test_data  = self.scaler.transform(test_raw)
 
         print(f"\nSplit Summary (Goodfellow 65%-15%-20%):")
         print(f"  Train: {len(self.train_data)} samples ({100*len(self.train_data)/n:.1f}%)")

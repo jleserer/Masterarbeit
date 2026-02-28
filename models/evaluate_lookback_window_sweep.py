@@ -24,6 +24,10 @@ warnings.filterwarnings('ignore')
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+import tensorflow as tf
+np.random.seed(42)
+tf.random.set_seed(42)
+
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Conv1D, MaxPooling1D, Flatten, Input
 from tensorflow.keras.optimizers import Adam
@@ -36,21 +40,21 @@ from data_preparation import DataPreparator, create_sequences
 # =============================================================================
 
 BEST_LSTM_CONFIG = {
-    'name': 'd0.2_u64_lr0.005_b8_e100',
+    'name': 'd0.2_u64_lr0.005_b32_e100',
     'dropout': 0.2,
     'dense_units': 64,
     'lr': 0.005,
-    'batch': 8,
+    'batch': 32,
     'epochs': 100
 }
 
 BEST_CNN_CONFIG = {
-    'name': 'k5_p2_d0.2_b16_e100',
+    'name': 'k5_p2_d0.2_b16_e50',
     'kernel': 5,
     'pool': 2,
     'dropout': 0.2,
     'batch': 16,
-    'epochs': 100
+    'epochs': 50
 }
 
 # Lookback windows to test: L = 1..60
@@ -111,19 +115,15 @@ def build_cnn_model(lookback_window, n_features, config):
     return model
 
 
-def train_and_evaluate(model, X_train, y_train, X_val, y_val, X_test, y_test, config, model_type):
+def train_and_evaluate(model, X_train, y_train, X_test, y_test, config):
     """Train model and return test MAE."""
-    callbacks = [
-        EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=0),
-        ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6, verbose=0)
-    ]
-
+    # No EarlyStopping: val data is in a different range than training data (global normalization),
+    # so val_loss would be misleadingly high and stop training too early.
+    # Fixed epochs ensure fair comparison across all L values.
     model.fit(
         X_train, y_train,
-        validation_data=(X_val, y_val),
         epochs=config['epochs'],
         batch_size=config['batch'],
-        callbacks=callbacks,
         verbose=0
     )
 
@@ -164,16 +164,19 @@ def evaluate_lookback_windows(data_path, output_dir):
         try:
             # Create sequences
             X_train, y_train = create_sequences(train_data, L)
-            X_val, y_val = create_sequences(val_data, L)
             X_test, y_test = create_sequences(test_data, L)
 
             n_features = X_train.shape[2]
 
+            # Reset seeds before each L to ensure fair comparison
+            np.random.seed(42)
+            tf.random.set_seed(42)
+
             # LSTM
             lstm_model = build_lstm_model(L, n_features, BEST_LSTM_CONFIG)
             lstm_mae, lstm_loss = train_and_evaluate(
-                lstm_model, X_train, y_train, X_val, y_val, X_test, y_test,
-                BEST_LSTM_CONFIG, 'LSTM'
+                lstm_model, X_train, y_train, X_test, y_test,
+                BEST_LSTM_CONFIG
             )
             results['lstm_mae'].append(lstm_mae)
             results['lstm_loss'].append(lstm_loss)
@@ -181,15 +184,14 @@ def evaluate_lookback_windows(data_path, output_dir):
             # CNN
             cnn_model = build_cnn_model(L, n_features, BEST_CNN_CONFIG)
             cnn_mae, cnn_loss = train_and_evaluate(
-                cnn_model, X_train, y_train, X_val, y_val, X_test, y_test,
-                BEST_CNN_CONFIG, 'CNN'
+                cnn_model, X_train, y_train, X_test, y_test,
+                BEST_CNN_CONFIG
             )
             results['cnn_mae'].append(cnn_mae)
             results['cnn_loss'].append(cnn_loss)
 
             # Clear models to free memory
             del lstm_model, cnn_model
-            import tensorflow as tf
             tf.keras.backend.clear_session()
 
             print(f"LSTM MAE: {lstm_mae:.6f}, CNN MAE: {cnn_mae:.6f}")
@@ -225,17 +227,14 @@ def generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
         n_features = X_train.shape[2]
 
         # Train LSTM
+        # No EarlyStopping: with training-only normalization, val data may be outside [0,1]
+        # due to price appreciation, making val_loss misleadingly high and causing premature stopping.
+        # Fixed epochs ensure fair and complete training.
         lstm_model = build_lstm_model(L, n_features, BEST_LSTM_CONFIG)
-        callbacks = [
-            EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=0),
-            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6, verbose=0)
-        ]
         lstm_model.fit(
             X_train, y_train,
-            validation_data=(X_val, y_val),
             epochs=BEST_LSTM_CONFIG['epochs'],
             batch_size=BEST_LSTM_CONFIG['batch'],
-            callbacks=callbacks,
             verbose=0
         )
         lstm_predictions = lstm_model.predict(X_test, verbose=0).flatten()
@@ -244,10 +243,8 @@ def generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
         cnn_model = build_cnn_model(L, n_features, BEST_CNN_CONFIG)
         cnn_model.fit(
             X_train, y_train,
-            validation_data=(X_val, y_val),
             epochs=BEST_CNN_CONFIG['epochs'],
             batch_size=BEST_CNN_CONFIG['batch'],
-            callbacks=callbacks,
             verbose=0
         )
         cnn_predictions = cnn_model.predict(X_test, verbose=0).flatten()
@@ -269,7 +266,6 @@ def generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
 
         # Clear models
         del lstm_model, cnn_model
-        import tensorflow as tf
         tf.keras.backend.clear_session()
 
         print(f"Done!")
@@ -480,49 +476,127 @@ def print_summary(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae)
         print(f"  {i}. L={results['lookback_windows'][idx]:2d}, MAE={mae:.6f}")
 
 
-if __name__ == "__main__":
-    # Data path
-    data_path = os.path.join(
-        os.path.dirname(__file__),
-        '..',
-        'stockData',
-        'preprocessedData',
-        'SP500_historical_data.csv'
-    )
-    
-    # Ensure output directory exists
-    os.makedirs(os.path.join(os.path.dirname(__file__), '..', 'results', 'lookback_sweep'), exist_ok=True)
+def run_single_lookback(data_path, output_dir, L):
+    """Train LSTM+CNN for a single lookback window L. Save result to L_{L:02d}.json."""
+    import tensorflow as tf
+    n_threads = int(os.environ.get('TF_WORKER_THREADS', '4'))
+    tf.config.threading.set_intra_op_parallelism_threads(n_threads)
+    tf.config.threading.set_inter_op_parallelism_threads(2)
 
-    output_dir = os.path.join(os.path.dirname(__file__), '..', 'results', 'lookback_sweep', 'lookback_evaluation_sweep')
+    np.random.seed(42)
+    tf.random.set_seed(42)
+
+    preparator = DataPreparator(data_path)
+    train_data, _, test_data = preparator.load_and_prepare()
+
+    result = {'L': L, 'lstm_mae': None, 'lstm_loss': None, 'cnn_mae': None, 'cnn_loss': None}
+
+    try:
+        X_train, y_train = create_sequences(train_data, L)
+        X_test, y_test = create_sequences(test_data, L)
+        n_features = X_train.shape[2]
+
+        np.random.seed(42)
+        tf.random.set_seed(42)
+
+        # LSTM
+        lstm_model = build_lstm_model(L, n_features, BEST_LSTM_CONFIG)
+        lstm_mae, lstm_loss = train_and_evaluate(
+            lstm_model, X_train, y_train, X_test, y_test, BEST_LSTM_CONFIG
+        )
+        result['lstm_mae'] = float(lstm_mae)
+        result['lstm_loss'] = float(lstm_loss)
+        del lstm_model
+        tf.keras.backend.clear_session()
+
+        # CNN
+        cnn_model = build_cnn_model(L, n_features, BEST_CNN_CONFIG)
+        cnn_mae, cnn_loss = train_and_evaluate(
+            cnn_model, X_train, y_train, X_test, y_test, BEST_CNN_CONFIG
+        )
+        result['cnn_mae'] = float(cnn_mae)
+        result['cnn_loss'] = float(cnn_loss)
+        del cnn_model
+        tf.keras.backend.clear_session()
+
+    except Exception as e:
+        print(f"ERROR L={L}: {e}")
+
     os.makedirs(output_dir, exist_ok=True)
+    result_path = os.path.join(output_dir, f'L_{L:02d}.json')
+    with open(result_path, 'w') as f:
+        json.dump(result, f, indent=2)
 
-    # Run evaluation
-    results, preparator, train_data, val_data, test_data = evaluate_lookback_windows(data_path, output_dir)
+    print(f"  L={L:2d}: LSTM MAE={result['lstm_mae']}, CNN MAE={result['cnn_mae']}")
+
+
+def collect_and_plot(data_path, output_dir):
+    """Collect all L_*.json results, generate plots and predictions."""
+    import tensorflow as tf
+
+    print(f"Collecting results from {output_dir}...")
+
+    # Read all individual L results
+    results = {
+        'lookback_windows': LOOKBACK_WINDOWS,
+        'lstm_mae': [],
+        'cnn_mae': [],
+        'lstm_loss': [],
+        'cnn_loss': []
+    }
+
+    for L in LOOKBACK_WINDOWS:
+        result_path = os.path.join(output_dir, f'L_{L:02d}.json')
+        if os.path.exists(result_path):
+            with open(result_path, 'r') as f:
+                r = json.load(f)
+            results['lstm_mae'].append(r['lstm_mae'] if r['lstm_mae'] is not None else np.nan)
+            results['cnn_mae'].append(r['cnn_mae'] if r['cnn_mae'] is not None else np.nan)
+            results['lstm_loss'].append(r['lstm_loss'] if r['lstm_loss'] is not None else np.nan)
+            results['cnn_loss'].append(r['cnn_loss'] if r['cnn_loss'] is not None else np.nan)
+        else:
+            print(f"  WARNING: Missing L={L}")
+            results['lstm_mae'].append(np.nan)
+            results['cnn_mae'].append(np.nan)
+            results['lstm_loss'].append(np.nan)
+            results['cnn_loss'].append(np.nan)
+
+    valid_count = sum(1 for x in results['lstm_mae'] if not np.isnan(x))
+    print(f"  Collected {valid_count}/{len(LOOKBACK_WINDOWS)} L-values")
 
     # Plot MAE vs Lookback Window
     best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae = plot_mae_vs_lookback(results, output_dir)
 
-    # Determine best L values (up to 3)
-    lstm_mae_sorted = sorted(enumerate(results['lstm_mae']), key=lambda x: x[1])
-    cnn_mae_sorted = sorted(enumerate(results['cnn_mae']), key=lambda x: x[1])
+    # Determine best L values (top 3)
+    lstm_mae_sorted = sorted(
+        [(i, m) for i, m in enumerate(results['lstm_mae']) if not np.isnan(m)],
+        key=lambda x: x[1]
+    )
+    cnn_mae_sorted = sorted(
+        [(i, m) for i, m in enumerate(results['cnn_mae']) if not np.isnan(m)],
+        key=lambda x: x[1]
+    )
 
-    # Get best 1-3 L values for both models
     best_lstm_L_values = [results['lookback_windows'][idx] for idx, _ in lstm_mae_sorted[:3]]
-    best_cnn_L_values = [results['lookback_windows'][idx] for idx, _ in cnn_mae_sorted[:3]]
+    best_cnn_L_values  = [results['lookback_windows'][idx] for idx, _ in cnn_mae_sorted[:3]]
 
     print(f"\nBest 3 L values for LSTM: {best_lstm_L_values}")
     print(f"Best 3 L values for CNN:  {best_cnn_L_values}")
 
+    # Load data for predictions
+    preparator = DataPreparator(data_path)
+    train_data, val_data, test_data = preparator.load_and_prepare()
+
     # Generate predictions for best L values
     lstm_predictions = generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
                                                         best_lstm_L_values, output_dir)
-    cnn_predictions = generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
-                                                       best_cnn_L_values, output_dir)
+    cnn_predictions  = generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
+                                                        best_cnn_L_values, output_dir)
 
     # Create prediction plots
     print(f"\nGenerating plots...")
     plot_predictions_vs_actual(lstm_predictions, output_dir, 'LSTM')
-    plot_predictions_vs_actual(cnn_predictions, output_dir, 'CNN')
+    plot_predictions_vs_actual(cnn_predictions,  output_dir, 'CNN')
 
     # Save results
     save_results(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae, output_dir)
@@ -530,7 +604,119 @@ if __name__ == "__main__":
     # Print summary
     print_summary(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae)
 
-    print(f"\n{'='*70}")
-    print("EVALUATION COMPLETE!")
-    print(f"Results saved to: {output_dir}")
-    print(f"{'='*70}")
+    # Clean up individual L files
+    for L in LOOKBACK_WINDOWS:
+        lf = os.path.join(output_dir, f'L_{L:02d}.json')
+        if os.path.exists(lf):
+            os.remove(lf)
+    print("  Cleaned up individual L_*.json files.")
+
+
+# All indices available
+INDICES = {
+    'SP500':    'SP500_historical_data.csv',
+    'DAX':      'DAX_historical_data.csv',
+    'NASDAQ':   'NASDAQ_historical_data.csv',
+    'FTSE100':  'FTSE100_historical_data.csv',
+    'HANG_SENG':'HANG_SENG_historical_data.csv',
+    'NIKKEI':   'NIKKEI_historical_data.csv',
+    '10Y_Bond': '10-Year Bond_historical_data.csv',
+    '30Y_Bond': '30 Year Bond_historical_data.csv',
+}
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Lookback Window Sweep')
+    parser.add_argument('--index', type=str, default=None,
+                        help='Single index to evaluate (e.g. SP500, DAX). Default: all')
+    parser.add_argument('--lookback', type=int, default=None,
+                        help='Single lookback window L to train (for parallel dispatch)')
+    parser.add_argument('--collect', action='store_true',
+                        help='Collect individual L results and generate plots')
+    args = parser.parse_args()
+
+    data_dir = os.path.join(os.path.dirname(__file__), '..', 'stockData', 'preprocessedData')
+    results_base = os.path.join(os.path.dirname(__file__), '..', 'results', 'lookback_sweep')
+
+    # Single lookback mode: train one L for one index
+    if args.lookback is not None:
+        if not args.index:
+            print("Error: --lookback requires --index")
+            sys.exit(1)
+        if args.index not in INDICES:
+            print(f"Error: Unknown index '{args.index}'. Available: {list(INDICES.keys())}")
+            sys.exit(1)
+        data_path = os.path.join(data_dir, INDICES[args.index])
+        output_dir = os.path.join(results_base, args.index)
+        run_single_lookback(data_path, output_dir, args.lookback)
+        sys.exit(0)
+
+    # Collect mode: assemble results and generate plots
+    if args.collect:
+        if not args.index:
+            print("Error: --collect requires --index")
+            sys.exit(1)
+        if args.index not in INDICES:
+            print(f"Error: Unknown index '{args.index}'. Available: {list(INDICES.keys())}")
+            sys.exit(1)
+        data_path = os.path.join(data_dir, INDICES[args.index])
+        output_dir = os.path.join(results_base, args.index)
+        collect_and_plot(data_path, output_dir)
+        sys.exit(0)
+
+    # Default: full sequential mode (legacy)
+    if args.index:
+        if args.index not in INDICES:
+            print(f"Error: Unknown index '{args.index}'. Available: {list(INDICES.keys())}")
+            sys.exit(1)
+        indices_to_run = {args.index: INDICES[args.index]}
+    else:
+        indices_to_run = INDICES
+
+    for index_name, filename in indices_to_run.items():
+        print(f"\n{'#'*70}")
+        print(f"# INDEX: {index_name}")
+        print(f"{'#'*70}")
+
+        data_path = os.path.join(data_dir, filename)
+        output_dir = os.path.join(results_base, index_name)
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Run evaluation
+        results, preparator, train_data, val_data, test_data = evaluate_lookback_windows(data_path, output_dir)
+
+        # Plot MAE vs Lookback Window
+        best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae = plot_mae_vs_lookback(results, output_dir)
+
+        # Determine best L values (top 3)
+        lstm_mae_sorted = sorted(enumerate(results['lstm_mae']), key=lambda x: x[1])
+        cnn_mae_sorted  = sorted(enumerate(results['cnn_mae']),  key=lambda x: x[1])
+
+        best_lstm_L_values = [results['lookback_windows'][idx] for idx, _ in lstm_mae_sorted[:3]]
+        best_cnn_L_values  = [results['lookback_windows'][idx] for idx, _ in cnn_mae_sorted[:3]]
+
+        print(f"\nBest 3 L values for LSTM: {best_lstm_L_values}")
+        print(f"Best 3 L values for CNN:  {best_cnn_L_values}")
+
+        # Generate predictions for best L values
+        lstm_predictions = generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
+                                                            best_lstm_L_values, output_dir)
+        cnn_predictions  = generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
+                                                            best_cnn_L_values, output_dir)
+
+        # Create prediction plots
+        print(f"\nGenerating plots...")
+        plot_predictions_vs_actual(lstm_predictions, output_dir, 'LSTM')
+        plot_predictions_vs_actual(cnn_predictions,  output_dir, 'CNN')
+
+        # Save results
+        save_results(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae, output_dir)
+
+        # Print summary
+        print_summary(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae)
+
+        print(f"\n{'='*70}")
+        print(f"EVALUATION COMPLETE: {index_name}")
+        print(f"Results saved to: {output_dir}")
+        print(f"{'='*70}")

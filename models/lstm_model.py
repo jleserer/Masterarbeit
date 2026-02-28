@@ -35,7 +35,7 @@ class LSTMModel:
     BATCH_SIZE = 32 #8 16 32 <- mit einer Konfig von den anderen Configs prüfen
     EPOCHS = 100 #50 <- mit einer Konfig von den anderen Configs prüfen
     
-    def __init__(self, data_path, output_dir=os.path.join('results', 'LSTM', 'SP500')):
+    def __init__(self, data_path, output_dir=os.path.join('..', 'results', 'tuning', 'LSTM', 'SP500')):
         """
         Args:
             data_path: Path to CSV file
@@ -121,17 +121,14 @@ class LSTMModel:
         print("STEP 3: Train LSTM Model")
         print("=" * 70)
         
-        callbacks = [
-            EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
-            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-        ]
-        
+        # No EarlyStopping: with training-only normalization, val data may be outside [0,1]
+        # due to price appreciation over time, making val_loss systematically high and
+        # causing premature stopping. Fixed epochs ensure complete training.
         self.history = self.model.fit(
             self.X_train, self.y_train,
             validation_data=(self.X_val, self.y_val),
             epochs=self.EPOCHS,
             batch_size=self.BATCH_SIZE,
-            callbacks=callbacks,
             verbose=1
         )
         
@@ -232,5 +229,5 @@ if __name__ == "__main__":
         'SP500_historical_data.csv'
     )
     
-    lstm = LSTMModel(data_path, output_dir=os.path.join('results', 'LSTM', 'SP500'))
+    lstm = LSTMModel(data_path, output_dir=os.path.join('..', 'results', 'tuning', 'LSTM', 'SP500'))
     lstm.run_full_pipeline()

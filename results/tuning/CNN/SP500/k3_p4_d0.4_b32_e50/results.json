@@ -1,0 +1,21 @@
+{
+  "config_name": "k3_p4_d0.4_b32_e50",
+  "config": {
+    "name": "k3_p4_d0.4_b32_e50",
+    "kernel": 3,
+    "pool": 4,
+    "dropout": 0.4,
+    "batch": 32,
+    "epochs": 50
+  },
+  "metrics": {
+    "train_loss": 0.016354769468307495,
+    "train_mae": 0.11775682866573334,
+    "val_loss": 0.24543197453022003,
+    "val_mae": 0.4676070213317871,
+    "test_loss": 2.726893663406372,
+    "test_mae": 1.5476622581481934
+  },
+  "training_time": 55.573270082473755,
+  "epochs_trained": 50
+}

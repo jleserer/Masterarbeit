@@ -36,7 +36,7 @@ def run_comparison(data_path, stock_name='SP500'):
     print("# LSTM MODEL TRAINING")
     print("#" * 80)
     
-    lstm_output_dir = os.path.join('results', 'LSTM', stock_name)
+    lstm_output_dir = os.path.join('..', 'results', 'tuning', 'LSTM', stock_name)
     lstm_model = LSTMModel(data_path, output_dir=lstm_output_dir)
     
     lstm_start = time.time()
@@ -59,7 +59,7 @@ def run_comparison(data_path, stock_name='SP500'):
     print("# CNN MODEL TRAINING")
     print("#" * 80)
     
-    cnn_output_dir = os.path.join('results', 'CNN', stock_name)
+    cnn_output_dir = os.path.join('..', 'results', 'tuning', 'CNN', stock_name)
     cnn_model = CNNModel(data_path, output_dir=cnn_output_dir)
     
     cnn_start = time.time()

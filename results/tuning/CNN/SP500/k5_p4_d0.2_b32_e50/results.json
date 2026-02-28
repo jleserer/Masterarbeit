@@ -1,0 +1,21 @@
+{
+  "config_name": "k5_p4_d0.2_b32_e50",
+  "config": {
+    "name": "k5_p4_d0.2_b32_e50",
+    "kernel": 5,
+    "pool": 4,
+    "dropout": 0.2,
+    "batch": 32,
+    "epochs": 50
+  },
+  "metrics": {
+    "train_loss": 0.005807628855109215,
+    "train_mae": 0.06817635148763657,
+    "val_loss": 0.14983919262886047,
+    "val_mae": 0.3639679551124573,
+    "test_loss": 1.6857181787490845,
+    "test_mae": 1.214092493057251
+  },
+  "training_time": 62.87809920310974,
+  "epochs_trained": 50
+}

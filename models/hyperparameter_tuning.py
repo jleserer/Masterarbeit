@@ -93,7 +93,7 @@ def generate_cnn_configs():
 class FullGridSearchTuner:
     """Manages full grid search for LSTM and CNN models."""
 
-    def __init__(self, data_path, output_dir='results'):
+    def __init__(self, data_path, output_dir=os.path.join('..', 'results', 'tuning')):
         self.data_path = data_path
         self.output_dir = output_dir
         self.lstm_dir = os.path.join(output_dir, 'LSTM', 'SP500')
@@ -204,17 +204,14 @@ class FullGridSearchTuner:
 
     def train_model(self, model, config, verbose=0):
         """Train model and return history."""
-        callbacks = [
-            EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
-            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-        ]
-
+        # No EarlyStopping: with training-only normalization, val data may be outside [0,1]
+        # due to price appreciation over time, making val_loss systematically high and
+        # causing premature stopping. Fixed epochs ensure fair comparison across all configs.
         history = model.fit(
             self.X_train, self.y_train,
             validation_data=(self.X_val, self.y_val),
             epochs=config['epochs'],
             batch_size=config['batch'],
-            callbacks=callbacks,
             verbose=verbose
         )
 
@@ -601,7 +598,87 @@ class FullGridSearchTuner:
         return best
 
 
+def run_single_config(data_path, model_type, config_name, output_dir=os.path.join('..', 'results', 'tuning')):
+    """
+    Train and evaluate a single config. Designed for parallel dispatch.
+    Each call is independent: loads data, builds model, trains, saves results.
+    """
+    import tensorflow as tf
+    # Limit TF threads to avoid oversubscription when running in parallel
+    n_threads = int(os.environ.get('TF_WORKER_THREADS', '4'))
+    tf.config.threading.set_intra_op_parallelism_threads(n_threads)
+    tf.config.threading.set_inter_op_parallelism_threads(2)
+
+    tuner = FullGridSearchTuner(data_path, output_dir=output_dir)
+    tuner.prepare_data()
+
+    # Find the config by name
+    if model_type == 'lstm':
+        all_configs = generate_lstm_configs()
+        config_dir_base = tuner.lstm_dir
+    else:
+        all_configs = generate_cnn_configs()
+        config_dir_base = tuner.cnn_dir
+
+    config = next((c for c in all_configs if c['name'] == config_name), None)
+    if config is None:
+        print(f"ERROR: Config '{config_name}' not found for {model_type}")
+        return None
+
+    config_dir = os.path.join(config_dir_base, config['name'])
+    os.makedirs(config_dir, exist_ok=True)
+
+    start_time = time.time()
+    try:
+        if model_type == 'lstm':
+            model = tuner.build_lstm_model(config)
+        else:
+            model = tuner.build_cnn_model(config)
+
+        history = tuner.train_model(model, config, verbose=0)
+        metrics = tuner.evaluate_model(model)
+        training_time = time.time() - start_time
+
+        result = {
+            'config_name': config['name'],
+            'config': config,
+            'metrics': metrics,
+            'training_time': training_time,
+            'epochs_trained': len(history.history['loss'])
+        }
+
+        tuner.save_training_plot(history, config['name'], model_type.upper(), config_dir)
+        model.save(os.path.join(config_dir, 'model.h5'))
+
+        with open(os.path.join(config_dir, 'results.json'), 'w') as f:
+            json.dump(result, f, indent=2)
+
+        print(f"  [{model_type.upper()}] {config['name']}: "
+              f"Val Loss={metrics['val_loss']:.6f}, Test MAE={metrics['test_mae']:.6f}, "
+              f"Time={training_time:.1f}s")
+
+    except Exception as e:
+        print(f"  [{model_type.upper()}] {config['name']}: ERROR: {e}")
+        result = {
+            'config_name': config['name'],
+            'config': config,
+            'error': str(e)
+        }
+        with open(os.path.join(config_dir, 'results.json'), 'w') as f:
+            json.dump(result, f, indent=2)
+
+    return result
+
+
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Hyperparameter Grid Search')
+    parser.add_argument('--model', choices=['lstm', 'cnn', 'both'], default='both',
+                        help='Which model type to tune (default: both)')
+    parser.add_argument('--config', type=str, default=None,
+                        help='Run single config by name (e.g. d0.2_u16_lr0.001_b8_e50)')
+    args = parser.parse_args()
+
     # Data path
     data_path = os.path.join(
         os.path.dirname(__file__),
@@ -612,6 +689,22 @@ if __name__ == "__main__":
         print(f"Error: Data file not found at {data_path}")
         sys.exit(1)
 
-    # Run full grid search
-    tuner = FullGridSearchTuner(data_path, output_dir='results')
-    tuner.run()
+    # Single config mode (for parallel dispatch from pipeline)
+    if args.config:
+        run_single_config(data_path, args.model, args.config)
+        sys.exit(0)
+
+    # Full grid search mode
+    tuner = FullGridSearchTuner(data_path, output_dir=os.path.join('..', 'results', 'tuning'))
+    tuner.prepare_data()
+
+    if args.model in ('lstm', 'both'):
+        tuner.run_lstm_tuning()
+    if args.model in ('cnn', 'both'):
+        tuner.run_cnn_tuning()
+
+    # Only run analysis when both models are available
+    if args.model == 'both':
+        tuner.find_best_configs()
+        tuner.create_comparison_table()
+        tuner.analyze_hyperparameters()
