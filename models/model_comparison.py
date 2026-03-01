@@ -1,7 +1,7 @@
 """
 Model Comparison & Testing Script
 =================================
-Runs both LSTM and CNN models and compares their performance.
+Runs LSTM, CNN and GRU models and compares their performance.
 """
 
 import os
@@ -11,6 +11,7 @@ import time
 import numpy as np
 from lstm_model import LSTMModel
 from cnn_model import CNNModel
+from gru_model import GRUModel
 
 
 def run_comparison(data_path, stock_name='SP500'):
@@ -78,18 +79,42 @@ def run_comparison(data_path, stock_name='SP500'):
         }
     }
     
+    # ========== GRU Model ==========
+    print("\n\n" + "#" * 80)
+    print("# GRU MODEL TRAINING")
+    print("#" * 80)
+
+    gru_output_dir = os.path.join('..', 'results', 'tuning', 'GRU', stock_name)
+    gru_model = GRUModel(data_path, output_dir=gru_output_dir)
+
+    gru_start = time.time()
+    gru_model.run_full_pipeline()
+    gru_time = time.time() - gru_start
+
+    results['models']['GRU'] = {
+        'output_dir': gru_output_dir,
+        'training_time_seconds': gru_time,
+        'lookback_window': GRUModel.LOOKBACK_WINDOW,
+        'architecture': {
+            'layers': 'GRU(128) + GRU(64) + Dense(32)',
+            'dropout': GRUModel.DROPOUT_RATE,
+            'learning_rate': GRUModel.LEARNING_RATE
+        }
+    }
+
     # ========== Comparison Summary ==========
     print("\n\n" + "=" * 80)
     print("COMPARISON SUMMARY")
     print("=" * 80)
-    
+
     print(f"\nLSTM Training Time: {lstm_time:.2f} seconds")
     print(f"CNN Training Time:  {cnn_time:.2f} seconds")
-    print(f"Speedup/Slowdown:   {cnn_time/lstm_time:.2f}x")
+    print(f"GRU Training Time:  {gru_time:.2f} seconds")
     
     print("\nResults saved to:")
     print(f"  - LSTM: {lstm_output_dir}/")
     print(f"  - CNN:  {cnn_output_dir}/")
+    print(f"  - GRU:  {gru_output_dir}/")
     
     # Save comparison results
     results_file = os.path.join('results', 'evaluation', stock_name, 'model_comparison_results.json')

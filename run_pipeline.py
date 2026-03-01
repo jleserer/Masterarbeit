@@ -1,31 +1,31 @@
 """
-Maximal parallelisierte Pipeline
-=================================
-Nutzt alle verfügbaren CPU-Kerne für maximale Geschwindigkeit.
+Maximal parallelisierte Pipeline (Per-Index Tuning)
+=====================================================
+Fuehrt fuer jeden der 8 Indizes ein eigenes Hyperparameter-Tuning durch,
+findet die beste Konfiguration pro Index und nutzt diese fuer den Lookback Sweep.
 
-Parallelisierung:
-  Schritt 1: Alle 120 Hyperparameter-Configs parallel (bis zu --workers Prozesse)
-             Jeder Prozess: 1 Config laden → trainieren → speichern
-  Schritt 3a: Alle 480 (Index, L)-Paare parallel (8 Indizes × 60 L-Werte)
-              Jeder Prozess: 1 (Index, L) laden → LSTM+CNN trainieren → speichern
-  Schritt 3b: Pro Index Ergebnisse sammeln & Plots generieren (parallel)
+Schritte:
+  1. Hyperparameter-Tuning: 8 Indizes × 192 Configs = 1536 Tasks parallel
+  2. Ergebnisse sammeln: Beste Konfiguration pro Index ermitteln
+  3. Lookback Sweep: 8 Indizes × 60 L-Werte = 480 Tasks parallel
+     (jeder Index nutzt seine eigene beste Konfiguration)
+  4. Cross-Index Vergleich: Konfigurationen und Ergebnisse vergleichen
 
 Hardware-Empfehlung (AMD Ryzen AI Max+ 395, 16C/32T, 48GB RAM):
   --workers 8   → 8 parallele Trainings, je ~4 TF-Threads (default)
   --workers 12  → aggressiver, voll ausgelastet
-  --workers 4   → konservativ, gut für Nebenbei-Arbeit
+  --workers 16  → maximal
 
 Aufruf:
   python run_pipeline.py                     # Alles parallel (8 Workers)
-  python run_pipeline.py --workers 12        # Mehr Parallelität
-  python run_pipeline.py --skip-tuning       # Tuning überspringen
-  python run_pipeline.py --clean-only        # Nur aufräumen
+  python run_pipeline.py --workers 16        # Mehr Parallelitaet
+  python run_pipeline.py --skip-tuning       # Tuning ueberspringen
+  python run_pipeline.py --clean-only        # Nur aufraeumen
 """
 
 import os
 import sys
 import json
-import re
 import shutil
 import subprocess
 import time
@@ -59,30 +59,29 @@ def clean_results(full=False):
     ]
     files_to_clean = [
         RESULTS_DIR / 'best_configurations.json',
-        TUNING_RESULTS_DIR / 'best_configurations.json',
     ]
 
     if full:
         # Also delete tuning + sweep results (fresh start)
-        dirs_to_clean += [
-            RESULTS_DIR / 'lookback_sweep',
-            TUNING_RESULTS_DIR / 'LSTM' / 'SP500',
-            TUNING_RESULTS_DIR / 'CNN'  / 'SP500',
-        ]
+        dirs_to_clean.append(RESULTS_DIR / 'lookback_sweep')
+        for index_name in ALL_INDICES:
+            dirs_to_clean.append(TUNING_RESULTS_DIR / 'LSTM' / index_name)
+            dirs_to_clean.append(TUNING_RESULTS_DIR / 'CNN'  / index_name)
+            dirs_to_clean.append(TUNING_RESULTS_DIR / 'GRU'  / index_name)
 
     print("=" * 70)
-    print("SCHRITT 0: Alte Ergebnisse löschen")
+    print("SCHRITT 0: Alte Ergebnisse loeschen")
     print("=" * 70)
 
     for d in dirs_to_clean:
         if d.exists():
             shutil.rmtree(d)
-            print(f"  Gelöscht: {d}")
+            print(f"  Geloescht: {d}")
 
     for f in files_to_clean:
         if f.exists():
             f.unlink()
-            print(f"  Gelöscht: {f}")
+            print(f"  Geloescht: {f}")
 
     print("Bereinigung abgeschlossen.\n")
 
@@ -114,20 +113,20 @@ def make_env(tf_threads=4):
 
 
 # =============================================================================
-# STEP 1: PARALLEL HYPERPARAMETER TUNING (ALL 120 CONFIGS)
+# STEP 1: PARALLEL HYPERPARAMETER TUNING (8 INDICES × 192 CONFIGS = 1536 TASKS)
 # =============================================================================
 
 def dispatch_single_config(args_tuple):
-    """Worker function: train one hyperparameter config."""
-    model_type, config_name, tf_threads = args_tuple
+    """Worker function: train one hyperparameter config for one index."""
+    index_name, model_type, config_name, tf_threads = args_tuple
     cmd = [sys.executable, '-u', 'hyperparameter_tuning.py',
-           '--model', model_type, '--config', config_name]
+           '--model', model_type, '--config', config_name, '--index', index_name]
     env = make_env(tf_threads)
-    log_name = f'tuning_{model_type}_{config_name}.log'
+    log_name = f'tuning_{index_name}_{model_type}_{config_name}.log'
     returncode, elapsed = run_subprocess(cmd, MODELS_DIR, env, log_name)
     status = 'OK' if returncode == 0 else 'FAIL'
-    print(f"  [{status}] {model_type.upper():4s} {config_name} ({elapsed:.0f}s)")
-    return (model_type, config_name, returncode, elapsed)
+    print(f"  [{status}] {index_name:10s} {model_type.upper():4s} {config_name} ({elapsed:.0f}s)")
+    return (index_name, model_type, config_name, returncode, elapsed)
 
 
 def generate_all_config_names():
@@ -146,43 +145,60 @@ def generate_all_config_names():
     ):
         cnn_configs.append(('cnn', f"k{kernel}_p{pool}_d{dropout}_b{batch}_e{epochs}"))
 
-    return lstm_configs + cnn_configs
+    gru_configs = []
+    for dropout, dense, lr, batch, epochs in itertools.product(
+        [0.2, 0.4], [16, 32, 64], [0.001, 0.005], [8, 16, 32], [50, 100]
+    ):
+        gru_configs.append(('gru', f"d{dropout}_u{dense}_lr{lr}_b{batch}_e{epochs}"))
+
+    return lstm_configs + cnn_configs + gru_configs
 
 
 def get_completed_configs():
-    """Check which configs are already done (for resume after crash).
+    """Check which (index, model, config) triples are already done.
 
     Checks for individual results.json files in per-config directories
-    under models/results/ (where hyperparameter_tuning.py saves them).
+    under results/tuning/{MODEL}/{INDEX}/.
     """
     completed = set()
-    for model_type in ['LSTM', 'CNN']:
-        model_base = TUNING_RESULTS_DIR / model_type / 'SP500'
-        if model_base.exists():
-            for config_dir in model_base.iterdir():
-                if config_dir.is_dir() and (config_dir / 'results.json').exists():
-                    completed.add((model_type.lower(), config_dir.name))
+    for model_type in ['LSTM', 'CNN', 'GRU']:
+        for index_name in ALL_INDICES:
+            model_base = TUNING_RESULTS_DIR / model_type / index_name
+            if model_base.exists():
+                for config_dir in model_base.iterdir():
+                    if config_dir.is_dir() and (config_dir / 'results.json').exists():
+                        completed.add((index_name, model_type.lower(), config_dir.name))
     return completed
 
 
 def run_parallel_tuning(max_workers, tf_threads):
-    """Run all 120 hyperparameter configs in parallel."""
+    """Run all 960 hyperparameter configs in parallel (8 indices × 120 configs)."""
+    all_configs = generate_all_config_names()
+    total_tasks = len(ALL_INDICES) * len(all_configs)
+
     print("\n" + "#" * 70)
-    print(f"# SCHRITT 1: Hyperparameter-Tuning (120 Configs, {max_workers} parallel)")
+    print(f"# SCHRITT 1: Per-Index Hyperparameter-Tuning")
+    print(f"#   {len(ALL_INDICES)} Indizes × {len(all_configs)} Configs = {total_tasks} Tasks")
+    print(f"#   {max_workers} parallele Worker")
     print("#" * 70)
 
-    all_configs = generate_all_config_names()
     completed = get_completed_configs()
-    pending = [(m, n) for m, n in all_configs if (m, n) not in completed]
 
-    print(f"  Total: {len(all_configs)}, Bereits fertig: {len(completed)}, Ausstehend: {len(pending)}")
+    # Generate all (index, model, config) tasks
+    all_tasks = []
+    for index_name in ALL_INDICES:
+        for model_type, config_name in all_configs:
+            if (index_name, model_type, config_name) not in completed:
+                all_tasks.append((index_name, model_type, config_name))
 
-    if not pending:
+    print(f"  Total: {total_tasks}, Bereits fertig: {len(completed)}, Ausstehend: {len(all_tasks)}")
+
+    if not all_tasks:
         print("  Alle Configs bereits abgeschlossen!")
         return True
 
     start = time.time()
-    tasks = [(m, n, tf_threads) for m, n in pending]
+    tasks = [(idx, m, n, tf_threads) for idx, m, n in all_tasks]
 
     results = []
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -191,125 +207,103 @@ def run_parallel_tuning(max_workers, tf_threads):
             results.append(future.result())
 
     elapsed = time.time() - start
-    failed = [r for r in results if r[2] != 0]
+    failed = [r for r in results if r[3] != 0]
     print(f"\n  Tuning abgeschlossen: {len(results)-len(failed)}/{len(results)} OK "
           f"in {elapsed/60:.1f} min ({elapsed/3600:.1f}h)")
 
     if failed:
         print(f"  Fehlgeschlagen: {len(failed)}")
-        for _, name, _, _ in failed[:5]:
-            print(f"    - {name}")
+        for idx, _, name, _, _ in failed[:10]:
+            print(f"    - {idx}/{name}")
 
     return len(failed) == 0
 
 
 # =============================================================================
-# STEP 2: COLLECT RESULTS & FIND BEST CONFIGS
+# STEP 2: COLLECT RESULTS & FIND BEST CONFIGS PER INDEX
 # =============================================================================
 
 def collect_results_and_find_best():
-    """Read individual config results and create aggregated JSON + best_configurations.json."""
+    """Read per-index config results and create best_configurations.json with per-index structure.
+
+    Output format:
+    {
+        "timestamp": "...",
+        "SP500": {
+            "best_lstm": {"config_name": "...", "config": {...}, "metrics": {...}},
+            "best_cnn":  {"config_name": "...", "config": {...}, "metrics": {...}},
+            "total_lstm_configs": 72,
+            "total_cnn_configs": 48
+        },
+        "DAX": { ... },
+        ...
+    }
+    """
     print("\n" + "=" * 70)
-    print("SCHRITT 2: Ergebnisse sammeln & Beste Configs ermitteln")
+    print("SCHRITT 2: Per-Index Ergebnisse sammeln & Beste Configs ermitteln")
     print("=" * 70)
 
     best_configs = {'timestamp': datetime.now().isoformat()}
 
-    for model_type, model_dir_name in [('lstm', 'LSTM'), ('cnn', 'CNN')]:
-        model_base = TUNING_RESULTS_DIR / model_dir_name / 'SP500'
-        if not model_base.exists():
-            print(f"  WARNUNG: {model_base} nicht gefunden!")
-            continue
+    for index_name in ALL_INDICES:
+        print(f"\n  --- {index_name} ---")
+        index_best = {}
 
-        # Collect all individual results.json files
-        all_results = []
-        for config_dir in sorted(model_base.iterdir()):
-            results_file = config_dir / 'results.json'
-            if results_file.exists():
-                with open(results_file, 'r') as f:
-                    all_results.append(json.load(f))
+        for model_type, model_dir_name in [('lstm', 'LSTM'), ('cnn', 'CNN'), ('gru', 'GRU')]:
+            model_base = TUNING_RESULTS_DIR / model_dir_name / index_name
+            if not model_base.exists():
+                print(f"    WARNUNG: {model_base} nicht gefunden!")
+                continue
 
-        # Save aggregated all_results.json
-        agg_file = model_base / 'all_results.json'
-        with open(agg_file, 'w') as f:
-            json.dump(all_results, f, indent=2)
+            # Collect all individual results.json files
+            all_results = []
+            for config_dir in sorted(model_base.iterdir()):
+                results_file = config_dir / 'results.json'
+                if results_file.exists():
+                    with open(results_file, 'r') as f:
+                        all_results.append(json.load(f))
 
-        valid = [r for r in all_results if 'metrics' in r]
-        print(f"  {model_dir_name}: {len(valid)} gültige Configs gesammelt")
+            # Save aggregated all_results.json
+            agg_file = model_base / 'all_results.json'
+            with open(agg_file, 'w') as f:
+                json.dump(all_results, f, indent=2)
 
-        if valid:
-            best = min(valid, key=lambda x: x['metrics']['val_loss'])
-            key = f'best_{model_type}'
-            best_configs[key] = {
-                'config_name': best['config_name'],
-                'config': best['config'],
-                'metrics': best['metrics'],
-            }
-            best_configs[f'total_{model_type}_configs'] = len(valid)
-            print(f"  Best {model_dir_name}: {best['config_name']}")
-            print(f"    Val Loss: {best['metrics']['val_loss']:.6f}, "
-                  f"Test MAE: {best['metrics']['test_mae']:.6f}")
+            valid = [r for r in all_results if 'metrics' in r]
+            index_best[f'total_{model_type}_configs'] = len(valid)
+
+            if valid:
+                best = min(valid, key=lambda x: x['metrics']['val_loss'])
+                index_best[f'best_{model_type}'] = {
+                    'config_name': best['config_name'],
+                    'config': best['config'],
+                    'metrics': best['metrics'],
+                }
+                print(f"    Best {model_dir_name}: {best['config_name']}"
+                      f"  (Val Loss: {best['metrics']['val_loss']:.6f},"
+                      f" Test MAE: {best['metrics']['test_mae']:.6f})")
+
+        best_configs[index_name] = index_best
 
     # Save best_configurations.json
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     best_path = RESULTS_DIR / 'best_configurations.json'
     with open(best_path, 'w') as f:
         json.dump(best_configs, f, indent=2)
-    print(f"  Gespeichert: {best_path}")
-
-    # Update sweep script
-    update_sweep_configs(best_configs)
+    print(f"\n  Gespeichert: {best_path}")
 
     return best_configs
 
 
-def update_sweep_configs(best_configs):
-    """Update BEST_LSTM_CONFIG / BEST_CNN_CONFIG in evaluate_lookback_window_sweep.py."""
-    sweep_path = MODELS_DIR / 'evaluate_lookback_window_sweep.py'
-    code = sweep_path.read_text(encoding='utf-8')
-
-    if 'best_lstm' in best_configs:
-        cfg = best_configs['best_lstm']['config']
-        new_block = (
-            f"BEST_LSTM_CONFIG = {{\n"
-            f"    'name': '{best_configs['best_lstm']['config_name']}',\n"
-            f"    'dropout': {cfg['dropout']},\n"
-            f"    'dense_units': {cfg['dense_units']},\n"
-            f"    'lr': {cfg['lr']},\n"
-            f"    'batch': {cfg['batch']},\n"
-            f"    'epochs': {cfg['epochs']}\n"
-            f"}}"
-        )
-        code = re.sub(r"BEST_LSTM_CONFIG\s*=\s*\{[^}]*\}", new_block, code, flags=re.DOTALL)
-        print(f"  Sweep-Script: BEST_LSTM_CONFIG -> {best_configs['best_lstm']['config_name']}")
-
-    if 'best_cnn' in best_configs:
-        cfg = best_configs['best_cnn']['config']
-        new_block = (
-            f"BEST_CNN_CONFIG = {{\n"
-            f"    'name': '{best_configs['best_cnn']['config_name']}',\n"
-            f"    'kernel': {cfg['kernel']},\n"
-            f"    'pool': {cfg['pool']},\n"
-            f"    'dropout': {cfg['dropout']},\n"
-            f"    'batch': {cfg['batch']},\n"
-            f"    'epochs': {cfg['epochs']}\n"
-            f"}}"
-        )
-        code = re.sub(r"BEST_CNN_CONFIG\s*=\s*\{[^}]*\}", new_block, code, flags=re.DOTALL)
-        print(f"  Sweep-Script: BEST_CNN_CONFIG  -> {best_configs['best_cnn']['config_name']}")
-
-    sweep_path.write_text(code, encoding='utf-8')
-
-
 # =============================================================================
-# STEP 3: PARALLEL LOOKBACK SWEEP (480 individual tasks)
+# STEP 3: PARALLEL LOOKBACK SWEEP (480 individual tasks, per-index configs)
 # =============================================================================
 
 def dispatch_single_lookback(args_tuple):
-    """Worker: train LSTM+CNN for one (index, L) pair."""
-    index_name, L, tf_threads = args_tuple
+    """Worker: train LSTM+CNN for one (index, L) pair with per-index best config."""
+    index_name, L, best_configs_path, tf_threads = args_tuple
     cmd = [sys.executable, '-u', 'evaluate_lookback_window_sweep.py',
-           '--index', index_name, '--lookback', str(L)]
+           '--index', index_name, '--lookback', str(L),
+           '--best-configs', str(best_configs_path)]
     env = make_env(tf_threads)
     log_name = f'sweep_{index_name}_L{L:02d}.log'
     returncode, elapsed = run_subprocess(cmd, MODELS_DIR, env, log_name)
@@ -320,9 +314,10 @@ def dispatch_single_lookback(args_tuple):
 
 def dispatch_sweep_collect(args_tuple):
     """Worker: collect results and generate plots for one index."""
-    index_name, tf_threads = args_tuple
+    index_name, best_configs_path, tf_threads = args_tuple
     cmd = [sys.executable, '-u', 'evaluate_lookback_window_sweep.py',
-           '--index', index_name, '--collect']
+           '--index', index_name, '--collect',
+           '--best-configs', str(best_configs_path)]
     env = make_env(tf_threads)
     log_name = f'sweep_{index_name}_collect.log'
     returncode, elapsed = run_subprocess(cmd, MODELS_DIR, env, log_name)
@@ -350,9 +345,15 @@ def get_completed_lookbacks():
 def run_parallel_sweep(max_workers, tf_threads):
     """Run lookback sweep: 480 individual (index, L) tasks in parallel, then collect."""
     total_tasks = len(ALL_INDICES) * 60  # 8 indices × 60 L-values
+    best_configs_path = RESULTS_DIR / 'best_configurations.json'
+
+    if not best_configs_path.exists():
+        print("FEHLER: best_configurations.json nicht gefunden! Tuning zuerst ausfuehren.")
+        return False
 
     print("\n" + "#" * 70)
     print(f"# SCHRITT 3a: Lookback Sweep ({total_tasks} Tasks, {max_workers} parallel)")
+    print(f"#   Jeder Index nutzt seine eigene beste Konfiguration")
     print("#" * 70)
 
     # Generate all (index, L) pairs — interleave indices for even distribution
@@ -364,7 +365,7 @@ def run_parallel_sweep(max_workers, tf_threads):
 
     if pending:
         start = time.time()
-        tasks = [(idx, L, tf_threads) for idx, L in pending]
+        tasks = [(idx, L, best_configs_path, tf_threads) for idx, L in pending]
 
         results = []
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -389,7 +390,7 @@ def run_parallel_sweep(max_workers, tf_threads):
     print("#" * 70)
 
     start = time.time()
-    collect_tasks = [(idx, tf_threads) for idx in ALL_INDICES]
+    collect_tasks = [(idx, best_configs_path, tf_threads) for idx in ALL_INDICES]
 
     collect_results = []
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -410,22 +411,206 @@ def run_parallel_sweep(max_workers, tf_threads):
 
 
 # =============================================================================
-# STEP 4: FINAL EVALUATION
+# STEP 4: CROSS-INDEX COMPARISON
 # =============================================================================
 
-def run_final_evaluation():
-    """Run evaluate_best_models.py."""
+def run_cross_index_comparison():
+    """Compare best hyperparameter configurations and results across all indices."""
     print("\n" + "#" * 70)
-    print("# SCHRITT 4: Finaler Modellvergleich")
+    print("# SCHRITT 4: Cross-Index Vergleich")
     print("#" * 70)
 
-    cmd = [sys.executable, '-u', 'evaluate_best_models.py']
-    env = make_env(tf_threads=8)
-    returncode, elapsed = run_subprocess(cmd, MODELS_DIR, env, 'evaluate_best_models.log')
+    best_path = RESULTS_DIR / 'best_configurations.json'
+    if not best_path.exists():
+        print("  FEHLER: best_configurations.json nicht gefunden!")
+        return
 
-    status = 'OK' if returncode == 0 else 'FEHLER'
-    print(f"  [{status}] evaluate_best_models.py ({elapsed/60:.1f} min)")
-    return returncode == 0
+    with open(best_path, 'r') as f:
+        best_configs = json.load(f)
+
+    comparison = {
+        'timestamp': datetime.now().isoformat(),
+        'lstm_configs': {},
+        'cnn_configs': {},
+        'gru_configs': {},
+        'lstm_sweep_results': {},
+        'cnn_sweep_results': {},
+        'gru_sweep_results': {},
+    }
+
+    # --- Hyperparameter Comparison ---
+    print("\n" + "=" * 90)
+    print("BESTE LSTM-KONFIGURATIONEN PRO INDEX")
+    print("=" * 90)
+    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s}")
+    print("-" * 90)
+
+    for index_name in ALL_INDICES:
+        if index_name not in best_configs:
+            continue
+        idx_best = best_configs[index_name]
+        if 'best_lstm' in idx_best:
+            b = idx_best['best_lstm']
+            print(f"{index_name:12s} {b['config_name']:35s} "
+                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f}")
+            comparison['lstm_configs'][index_name] = {
+                'config_name': b['config_name'],
+                'config': b['config'],
+                'val_loss': b['metrics']['val_loss'],
+                'test_mae': b['metrics']['test_mae'],
+            }
+
+    print("\n" + "=" * 90)
+    print("BESTE CNN-KONFIGURATIONEN PRO INDEX")
+    print("=" * 90)
+    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s}")
+    print("-" * 90)
+
+    for index_name in ALL_INDICES:
+        if index_name not in best_configs:
+            continue
+        idx_best = best_configs[index_name]
+        if 'best_cnn' in idx_best:
+            b = idx_best['best_cnn']
+            print(f"{index_name:12s} {b['config_name']:35s} "
+                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f}")
+            comparison['cnn_configs'][index_name] = {
+                'config_name': b['config_name'],
+                'config': b['config'],
+                'val_loss': b['metrics']['val_loss'],
+                'test_mae': b['metrics']['test_mae'],
+            }
+
+    print("\n" + "=" * 90)
+    print("BESTE GRU-KONFIGURATIONEN PRO INDEX")
+    print("=" * 90)
+    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s}")
+    print("-" * 90)
+
+    for index_name in ALL_INDICES:
+        if index_name not in best_configs:
+            continue
+        idx_best = best_configs[index_name]
+        if 'best_gru' in idx_best:
+            b = idx_best['best_gru']
+            print(f"{index_name:12s} {b['config_name']:35s} "
+                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f}")
+            comparison['gru_configs'][index_name] = {
+                'config_name': b['config_name'],
+                'config': b['config'],
+                'val_loss': b['metrics']['val_loss'],
+                'test_mae': b['metrics']['test_mae'],
+            }
+
+    # --- Analyze Config Similarity ---
+    print("\n" + "=" * 90)
+    print("HYPERPARAMETER-ANALYSE: Welche Parameter werden bevorzugt?")
+    print("=" * 90)
+
+    # LSTM parameter frequency
+    lstm_params = {'dropout': {}, 'dense_units': {}, 'lr': {}, 'batch': {}, 'epochs': {}}
+    for idx, data in comparison['lstm_configs'].items():
+        cfg = data['config']
+        for param in lstm_params:
+            val = cfg[param]
+            lstm_params[param][val] = lstm_params[param].get(val, [])
+            lstm_params[param][val].append(idx)
+
+    print("\nLSTM - Haeufigkeit der besten Parameter:")
+    for param, values in lstm_params.items():
+        print(f"  {param}:")
+        for val, indices in sorted(values.items(), key=lambda x: -len(x[1])):
+            print(f"    {val}: {len(indices)}x ({', '.join(indices)})")
+
+    # CNN parameter frequency
+    cnn_params = {'kernel': {}, 'pool': {}, 'dropout': {}, 'batch': {}, 'epochs': {}}
+    for idx, data in comparison['cnn_configs'].items():
+        cfg = data['config']
+        for param in cnn_params:
+            val = cfg[param]
+            cnn_params[param][val] = cnn_params[param].get(val, [])
+            cnn_params[param][val].append(idx)
+
+    print("\nCNN - Haeufigkeit der besten Parameter:")
+    for param, values in cnn_params.items():
+        print(f"  {param}:")
+        for val, indices in sorted(values.items(), key=lambda x: -len(x[1])):
+            print(f"    {val}: {len(indices)}x ({', '.join(indices)})")
+
+    # GRU parameter frequency
+    gru_params = {'dropout': {}, 'dense_units': {}, 'lr': {}, 'batch': {}, 'epochs': {}}
+    for idx, data in comparison['gru_configs'].items():
+        cfg = data['config']
+        for param in gru_params:
+            val = cfg[param]
+            gru_params[param][val] = gru_params[param].get(val, [])
+            gru_params[param][val].append(idx)
+
+    print("\nGRU - Haeufigkeit der besten Parameter:")
+    for param, values in gru_params.items():
+        print(f"  {param}:")
+        for val, indices in sorted(values.items(), key=lambda x: -len(x[1])):
+            print(f"    {val}: {len(indices)}x ({', '.join(indices)})")
+
+    # --- Sweep Results Comparison ---
+    print("\n" + "=" * 90)
+    print("LOOKBACK SWEEP: Bestes L pro Index")
+    print("=" * 90)
+
+    sweep_base = RESULTS_DIR / 'lookback_sweep'
+    print(f"\n{'Index':12s} {'Best LSTM L':>12s} {'LSTM MAE':>10s} {'Best CNN L':>12s} {'CNN MAE':>10s} {'Best GRU L':>12s} {'GRU MAE':>10s}")
+    print("-" * 82)
+
+    for index_name in ALL_INDICES:
+        results_file = sweep_base / index_name / 'lookback_evaluation_results.json'
+        if results_file.exists():
+            with open(results_file, 'r') as f:
+                sweep_res = json.load(f)
+
+            lstm_l = sweep_res.get('best_l_lstm', {}).get('l_value', '?')
+            lstm_mae = sweep_res.get('best_l_lstm', {}).get('mae', float('nan'))
+            cnn_l = sweep_res.get('best_l_cnn', {}).get('l_value', '?')
+            cnn_mae = sweep_res.get('best_l_cnn', {}).get('mae', float('nan'))
+            gru_l = sweep_res.get('best_l_gru', {}).get('l_value', '?')
+            gru_mae = sweep_res.get('best_l_gru', {}).get('mae', float('nan'))
+
+            print(f"{index_name:12s} {str(lstm_l):>12s} {lstm_mae:10.6f} {str(cnn_l):>12s} {cnn_mae:10.6f} {str(gru_l):>12s} {gru_mae:10.6f}")
+
+            comparison['lstm_sweep_results'][index_name] = {'best_L': lstm_l, 'mae': lstm_mae}
+            comparison['cnn_sweep_results'][index_name] = {'best_L': cnn_l, 'mae': cnn_mae}
+            comparison['gru_sweep_results'][index_name] = {'best_L': gru_l, 'mae': gru_mae}
+        else:
+            print(f"{index_name:12s} {'(missing)':>12s} {'':>10s} {'(missing)':>12s} {'':>10s} {'(missing)':>12s}")
+
+    # --- Config Deviation Analysis ---
+    print("\n" + "=" * 90)
+    print("KONFIGURATIONSABWEICHUNGEN")
+    print("=" * 90)
+
+    # Check how many unique configs exist
+    unique_lstm = set(d['config_name'] for d in comparison['lstm_configs'].values())
+    unique_cnn = set(d['config_name'] for d in comparison['cnn_configs'].values())
+    print(f"\n  LSTM: {len(unique_lstm)} verschiedene Konfigurationen aus {len(comparison['lstm_configs'])} Indizes")
+    for cfg_name in sorted(unique_lstm):
+        indices_with = [idx for idx, d in comparison['lstm_configs'].items() if d['config_name'] == cfg_name]
+        print(f"    {cfg_name}: {', '.join(indices_with)}")
+
+    print(f"\n  CNN: {len(unique_cnn)} verschiedene Konfigurationen aus {len(comparison['cnn_configs'])} Indizes")
+    for cfg_name in sorted(unique_cnn):
+        indices_with = [idx for idx, d in comparison['cnn_configs'].items() if d['config_name'] == cfg_name]
+        print(f"    {cfg_name}: {', '.join(indices_with)}")
+
+    unique_gru = set(d['config_name'] for d in comparison['gru_configs'].values())
+    print(f"\n  GRU: {len(unique_gru)} verschiedene Konfigurationen aus {len(comparison['gru_configs'])} Indizes")
+    for cfg_name in sorted(unique_gru):
+        indices_with = [idx for idx, d in comparison['gru_configs'].items() if d['config_name'] == cfg_name]
+        print(f"    {cfg_name}: {', '.join(indices_with)}")
+
+    # Save comparison
+    comparison_path = RESULTS_DIR / 'cross_index_comparison.json'
+    with open(comparison_path, 'w') as f:
+        json.dump(comparison, f, indent=2)
+    print(f"\n  Vergleich gespeichert: {comparison_path}")
 
 
 # =============================================================================
@@ -433,13 +618,13 @@ def run_final_evaluation():
 # =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='Masterarbeit Pipeline (max. parallel)')
+    parser = argparse.ArgumentParser(description='Masterarbeit Pipeline (Per-Index Tuning)')
     parser.add_argument('--workers', type=int, default=8,
                         help='Parallele Prozesse (default: 8)')
     parser.add_argument('--skip-tuning', action='store_true',
-                        help='Hyperparameter-Tuning überspringen')
+                        help='Hyperparameter-Tuning ueberspringen')
     parser.add_argument('--clean-only', action='store_true',
-                        help='Nur aufräumen')
+                        help='Nur aufraeumen')
     args = parser.parse_args()
 
     # Calculate TF threads per worker: total_threads / workers
@@ -449,12 +634,15 @@ def main():
     total_start = time.time()
 
     print("\n" + "=" * 70)
-    print("MASTERARBEIT PIPELINE (MAXIMAL PARALLEL)")
+    print("MASTERARBEIT PIPELINE (PER-INDEX TUNING)")
     print("=" * 70)
     print(f"Gestartet:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"CPU Kerne:     {total_threads}")
     print(f"Workers:       {args.workers}")
     print(f"TF Threads/W:  {tf_threads}")
+    print(f"Indizes:       {len(ALL_INDICES)}")
+    print(f"Tuning Tasks:  {len(ALL_INDICES)} × 192 = {len(ALL_INDICES) * 192}")
+    print(f"Sweep Tasks:   {len(ALL_INDICES)} × 60  = {len(ALL_INDICES) * 60}")
     print()
 
     # Step 0: Clean (preserve tuning results for crash-recovery)
@@ -464,20 +652,20 @@ def main():
         print("--clean-only: Fertig.")
         return
 
-    # Step 1: Parallel Hyperparameter Tuning
+    # Step 1: Parallel Hyperparameter Tuning (per index)
     if not args.skip_tuning:
         run_parallel_tuning(args.workers, tf_threads)
 
-        # Step 2: Collect results & find best
+        # Step 2: Collect results & find best per index
         collect_results_and_find_best()
     else:
-        print("\n--skip-tuning: Schritte 1+2 übersprungen.\n")
+        print("\n--skip-tuning: Schritte 1+2 uebersprungen.\n")
 
-    # Step 3: Parallel Lookback Sweep (480 individual tasks, not limited by index count)
+    # Step 3: Parallel Lookback Sweep (per-index best configs)
     run_parallel_sweep(args.workers, tf_threads)
 
-    # Step 4: Final Evaluation
-    run_final_evaluation()
+    # Step 4: Cross-Index Comparison
+    run_cross_index_comparison()
 
     total_elapsed = time.time() - total_start
     print("\n" + "=" * 70)

@@ -1,6 +1,6 @@
 # Masterarbeit - Stock Price Prediction mit Deep Learning
 
-Dieses Repository enthält die Implementierung von Deep Learning Modellen (LSTM und CNN) zur Vorhersage von Aktienkursen basierend auf historischen Daten.
+Dieses Repository enthält die Implementierung von Deep Learning Modellen (LSTM, CNN und GRU) zur Vorhersage von Aktienkursen basierend auf historischen Daten.
 
 ## Repository-Struktur
 
@@ -9,31 +9,28 @@ Masterarbeit/
 ├── models/                          # Deep Learning Modelle und Implementierungen
 │   ├── lstm_model.py                # LSTM-Modell (60-Tage floating window)
 │   ├── cnn_model.py                 # CNN-Modell (60-Tage floating window)
+│   ├── gru_model.py                 # GRU-Modell (60-Tage floating window)
 │   ├── data_preparation.py          # Datenaufbereitung und Sequenzerzeugung
-│   ├── model_comparison.py          # Vergleich der Modelle
-│   ├── hyperparameter_tuning.py     # Full Grid Search (CNN: 48, LSTM: 72 Configs)
-│   ├── evaluate_best_models.py      # Evaluation der besten Modelle
-│   ├── evaluate_lookback_window.py  # Lookback-Window Evaluation
-│   ├── sliceWindow.py               # Referenzimplementierung für floating window
-│   ├── test_suite.py                # Umfassende Tests
+│   ├── model_comparison.py          # Vergleich aller drei Modelle
+│   ├── hyperparameter_tuning.py     # Full Grid Search (CNN: 48, LSTM: 72, GRU: 72 Configs)
+│   ├── evaluate_lookback_window_sweep.py  # Lookback-Window Sweep (L=1..60)
 │   └── README.md                    # Detaillierte Modell-Dokumentation
 │
 ├── stockData/                # Aktiendaten und Datenverarbeitung
 │   ├── sourceData/           # Rohdaten von Yahoo Finance
-│   ├── preprocessedData/     # Normalisierte CSV-Dateien (für Modelle)
-│   ├── excerptData/          # Daten-Auszüge für Tests
+│   ├── preprocessedData/     # Bereinigte CSV-Dateien (absolute Preise)
 │   ├── get-data/             # Scripts zum Datenabruf
-│   ├── plots/                # Datenvisualisierungen
-│   └── characterize_excerpt_data.py
+│   └── plots/                # Datenvisualisierungen
 │
 ├── results/                  # Alle Modell-Ergebnisse
-│   ├── CNN/SP500/            # CNN-Tuning- und Trainingsergebnisse für S&P 500
-│   ├── LSTM/SP500/           # LSTM-Tuning- und Trainingsergebnisse für S&P 500
-│   └── evaluation/SP500/     # Modellvergleich und Evaluierungsplots
+│   ├── tuning/               # Hyperparameter-Tuning-Ergebnisse (8 Indizes)
+│   │   ├── CNN/{INDEX}/      # CNN-Tuning (48 Configs pro Index)
+│   │   └── LSTM/{INDEX}/     # LSTM-Tuning (72 Configs pro Index)
+│   ├── lookback_sweep/       # Lookback-Window Sweep (L=1..60, 8 Indizes)
+│   ├── best_configurations.json   # Beste Konfiguration pro Index
+│   └── cross_index_comparison.json # Cross-Index Vergleich
 │
-├── lehrmaterial/             # Lehrmaterialien und Übungen
-└── profCommunication/        # Kommunikation mit Professor
-
+└── run_pipeline.py           # Parallelisierte Pipeline (Tuning + Sweep)
 ```
 
 ## Hauptkomponenten
@@ -45,76 +42,93 @@ Das Herzstück des Projekts mit allen Machine Learning Modellen und Hilfsfunktio
 **Detaillierte Dokumentation:** Siehe [models/README.md](models/README.md)
 
 Hauptdateien:
-- `lstm_model.py`: LSTM-Modell mit 60-Tage Loopback Window
-- `cnn_model.py`: CNN-Modell mit 60-Tage Loopback Window
-- `data_preparation.py`: Datenaufbereitung, Normalisierung, Train-Val-Test Split (65%-15%-20%)
-- `model_comparison.py`: Automatisierter Vergleich beider Modelle
-- `hyperparameter_tuning.py`: Full Grid Search (CNN: 48, LSTM: 72 Konfigurationen)
-- `evaluate_best_models.py`: Evaluation der besten Modelle auf dem Test-Set
-- `sliceWindow.py`: Referenzimplementierung für das floating window Konzept
+- `lstm_model.py`: LSTM-Modell mit konfigurierbarem Lookback Window
+- `cnn_model.py`: CNN-Modell mit konfigurierbarem Lookback Window
+- `gru_model.py`: GRU-Modell mit konfigurierbarem Lookback Window
+- `data_preparation.py`: Datenaufbereitung, prozentuale Returns, Train-Val-Test Split (65%-15%-20%)
+- `model_comparison.py`: Automatisierter Vergleich aller drei Modelle
+- `hyperparameter_tuning.py`: Full Grid Search (CNN: 48, LSTM: 72, GRU: 72 Konfigurationen)
+- `evaluate_lookback_window_sweep.py`: Lookback-Window Sweep (L=1..60) mit per-Index bester Konfiguration
 
 ### 2. Stock Data Directory (`stockData/`)
 
 Enthält alle Aktiendaten in verschiedenen Verarbeitungsstufen:
 
 - **sourceData/**: Originaldaten von Yahoo Finance
-- **preprocessedData/**: Bereinigte und normalisierte CSV-Dateien
-- **excerptData/**: Kleinere Datenauszüge für schnelle Tests
+- **preprocessedData/**: Bereinigte CSV-Dateien (absolute Preise, Returns werden zur Laufzeit berechnet)
 - **get-data/**: Python-Scripts zum Herunterladen neuer Daten
 - **plots/**: Visualisierungen der Datenanalyse
 
-### 3. Ergebnisse
+### 3. Pipeline (`run_pipeline.py`)
 
-- **results/CNN/SP500/**: CNN-Hyperparameter-Tuning-Ergebnisse (48 Configs) und trainiertes Modell
-- **results/LSTM/SP500/**: LSTM-Hyperparameter-Tuning-Ergebnisse (72 Configs) und trainiertes Modell
-- **results/evaluation/SP500/**: Evaluierungsplots (Vorhersagen, Modellvergleich)
+Maximal parallelisierte Pipeline für das gesamte Experiment:
+1. **Hyperparameter-Tuning**: 8 Indizes × 192 Configs = 1536 Tasks parallel
+2. **Ergebnisse sammeln**: Beste Konfiguration pro Index ermitteln
+3. **Lookback Sweep**: 8 Indizes × 60 L-Werte = 480 Tasks parallel
+4. **Cross-Index Vergleich**: Konfigurationen und Ergebnisse vergleichen
+
+### 4. Ergebnisse
+
+- **results/tuning/{CNN,LSTM}/{INDEX}/**: Hyperparameter-Tuning-Ergebnisse pro Index
+- **results/lookback_sweep/{INDEX}/**: Lookback-Window Sweep (L=1..60, 8 Indizes)
+- **results/best_configurations.json**: Beste Konfiguration pro Index und Modelltyp
+- **results/cross_index_comparison.json**: Vergleich über alle Indizes
 
 ## Schnellstart
 
 ### Voraussetzungen
 
 ```bash
-pip install tensorflow pandas numpy scikit-learn matplotlib yfinance
+pip install tensorflow pandas numpy matplotlib yfinance
 ```
 
 ### Einzelnes Modell trainieren
 
 ```bash
-# LSTM trainieren
 cd models
 python lstm_model.py
-
-# CNN trainieren
 python cnn_model.py
+python gru_model.py
 ```
 
-### Beide Modelle vergleichen
+### Alle drei Modelle vergleichen
 
 ```bash
 cd models
 python model_comparison.py
 ```
 
-Dies führt beide Modelle aus und erstellt einen detaillierten Vergleichsbericht in `results/evaluation/SP500/model_comparison_results.json`.
+### Gesamte Pipeline ausführen
+
+```bash
+python run_pipeline.py                # Alles parallel (8 Workers)
+python run_pipeline.py --workers 16   # Mehr Parallelität
+python run_pipeline.py --skip-tuning  # Tuning überspringen
+```
 
 ## Modell-Architektur
 
-Beide Modelle verwenden:
-- **Loopback Window**: 60 Handelstage (backward-looking)
+Alle drei Modelle verwenden:
+- **Lookback Window**: 60 Handelstage (backward-looking, konfigurierbar)
 - **Train-Val-Test Split**: 65%-15%-20% (nach Goodfellow et al., 2016)
 - **Optimizer**: Adam (Learning Rate: 0.001)
 - **Loss**: MSE (Mean Squared Error)
-- **Target**: Close-Preis (Single-Output)
+- **Input**: Prozentuale Returns r(t) = (price(t) - price(t-1)) / price(t-1)
+- **Target**: Close-Return (Single-Output)
 
-### LSTM (118,081 Parameter)
+### LSTM
 - 2 LSTM-Layer (128, 64 Units)
 - Dropout: 0.2
 - Dense Layer: 32 Units
 
-### CNN (322,433 Parameter)
+### GRU
+- 2 GRU-Layer (128, 64 Units)
+- Dropout: 0.2
+- Dense Layer: 32 Units
+
+### CNN
 - 3 Conv1D-Layer (64, 128, 256 Filter)
-- Kernel Size: 5
-- Max Pooling: 2
+- Kernel Size: 5, Max Pooling: 2
 - Dense Layers: 64, 32 Units
 
 ## Floating Window Konzept
@@ -123,24 +137,15 @@ Das Projekt implementiert ein **backward-looking floating window**:
 
 ```
 Für jeden Zeitpunkt i:
-  Input:  Daten von [i-60, i-59, ..., i-1] (60 Tage Historie)
-  Output: Preis am Tag i
+  Input:  Daten von [i-L, i-L+1, ..., i-1] (L Tage Historie)
+  Output: Return am Tag i
 
 Das Fenster "gleitet" über die gesamten Trainingsdaten.
 ```
 
-Siehe [models/sliceWindow.py](models/sliceWindow.py) für die Referenzimplementierung.
-
 ## Datensätze
 
-### Testdatensatz
-Primärer Testdatensatz: **S&P 500** (^SPX)
-- Zeitraum: 2021-01-01 bis 2024-10-26
-- Quelle: Yahoo Finance
-- Features: Open, High, Low, Close, Volume, Adj Close
-
-### Referenzdatensätze
-Das Repository enthält zusätzliche normalisierte Datensätze in `stockData/preprocessedData/`:
+Das Repository enthält 8 Datensätze in `stockData/preprocessedData/`:
 
 - **SP500_historical_data.csv** - S&P 500 Index
 - **NASDAQ_historical_data.csv** - NASDAQ Composite
@@ -151,33 +156,11 @@ Das Repository enthält zusätzliche normalisierte Datensätze in `stockData/pre
 - **10-Year Bond_historical_data.csv** - 10-Jahres Staatsanleihen
 - **30 Year Bond_historical_data.csv** - 30-Jahres Staatsanleihen
 
-Alle Datensätze sind vorverarbeitet und normalisiert, bereit für das Training der Modelle.
-
-## Tests
-
-Umfassende Testsuite:
-
-```bash
-cd models
-python test_suite.py
-```
-
-Tests umfassen:
-- Datenaufbereitung
-- Sequenzerzeugung
-- Modellarchitektur
-- Training
-- Vorhersagen
-
-## Dokumentation
-
-- **Hauptdokumentation**: [models/README.md](models/README.md)
-- **Implementierungs-Details**: [models/IMPLEMENTATION_SUMMARY.txt](models/IMPLEMENTATION_SUMMARY.txt)
-- **Quick Reference**: [models/QUICK_REFERENCE.txt](models/QUICK_REFERENCE.txt)
-- **Test-Ergebnisse**: [models/TEST_RESULTS.txt](models/TEST_RESULTS.txt)
+Alle Datensätze enthalten absolute Preise. Prozentuale Returns werden zur Laufzeit in `data_preparation.py` berechnet.
 
 ## Wissenschaftliche Grundlagen
 
 - **Data Split**: Goodfellow, Bengio, Courville (2016) - "Deep Learning"
 - **LSTM**: Hochreiter & Schmidhuber (1997)
+- **GRU**: Cho et al. (2014) - "Learning Phrase Representations using RNN Encoder-Decoder"
 - **CNN for Time Series**: LeCun, Bengio, Hinton (2015)

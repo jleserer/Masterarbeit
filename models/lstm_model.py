@@ -121,9 +121,9 @@ class LSTMModel:
         print("STEP 3: Train LSTM Model")
         print("=" * 70)
         
-        # No EarlyStopping: with training-only normalization, val data may be outside [0,1]
-        # due to price appreciation over time, making val_loss systematically high and
-        # causing premature stopping. Fixed epochs ensure complete training.
+        # With percentage returns, val data has a similar distribution to training data
+        # (no domain shift). EarlyStopping could be used but is kept disabled for
+        # consistency with the hyperparameter tuning results.
         self.history = self.model.fit(
             self.X_train, self.y_train,
             validation_data=(self.X_val, self.y_val),
@@ -160,10 +160,13 @@ class LSTMModel:
         self.predictions['val'] = self.model.predict(self.X_val, verbose=0)
         self.predictions['test'] = self.model.predict(self.X_test, verbose=0)
         
-        # Inverse transform to original scale
-        self.predictions['train_original'] = self.preparator.inverse_transform(self.predictions['train'])
-        self.predictions['val_original'] = self.preparator.inverse_transform(self.predictions['val'])
-        self.predictions['test_original'] = self.preparator.inverse_transform(self.predictions['test'])
+        # Inverse transform to original price scale
+        self.predictions['train_original'] = self.preparator.inverse_transform(
+            self.predictions['train'], split='train', lookback=self.LOOKBACK_WINDOW)
+        self.predictions['val_original'] = self.preparator.inverse_transform(
+            self.predictions['val'], split='val', lookback=self.LOOKBACK_WINDOW)
+        self.predictions['test_original'] = self.preparator.inverse_transform(
+            self.predictions['test'], split='test', lookback=self.LOOKBACK_WINDOW)
         
         print("Predictions generated and inverse-transformed!")
     

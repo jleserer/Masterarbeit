@@ -1,0 +1,21 @@
+{
+  "config_name": "k3_p2_d0.2_b32_e100",
+  "config": {
+    "name": "k3_p2_d0.2_b32_e100",
+    "kernel": 3,
+    "pool": 2,
+    "dropout": 0.2,
+    "batch": 32,
+    "epochs": 100
+  },
+  "metrics": {
+    "train_loss": 0.0002864257839974016,
+    "train_mae": 0.011320803314447403,
+    "val_loss": 0.00010996109631378204,
+    "val_mae": 0.007700271904468536,
+    "test_loss": 0.00022391324455384165,
+    "test_mae": 0.010825946927070618
+  },
+  "training_time": 209.5689034461975,
+  "epochs_trained": 100
+}

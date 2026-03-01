@@ -1,27 +1,30 @@
 """
 Data Preparation Module
 ========================
-Loads normalized stock data and splits it according to Goodfellow, Bengio, Courville (2016):
+Loads stock data, computes percentage returns, and splits according to
+Goodfellow, Bengio, Courville (2016):
 - Training: 65%
 - Validation: 15%
 - Test: 20%
 
-Handles scaling and preprocessing for LSTM and CNN models.
+Uses percentage returns r(t) = (price(t) - price(t-1)) / price(t-1) instead of
+absolute prices. Returns are approximately stationary, eliminating the domain shift
+that occurs when MinMaxScaler is fitted on training data only (e.g. SP500 training
+prices 242-1565 but test prices 2234-6905).
 """
 
 import os
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split
 
 
 class DataPreparator:
     """
     Prepares and splits stock market data for ML/DL models.
     Uses Goodfellow 65%-15%-20% split for Train-Val-Test.
-    
-    Predicts only Close price (single output).
+
+    Computes percentage returns from Close prices. Returns are stationary
+    and have a similar distribution across all splits, avoiding domain shift.
     """
 
     def __init__(self, data_path, target_columns=None, start_date=None):
@@ -34,15 +37,16 @@ class DataPreparator:
         self.data_path = data_path
         self.target_columns = target_columns or ['Close']
         self.start_date = start_date
-        self.scaler = MinMaxScaler(feature_range=(0, 1))
         self.data = None
         self.train_data = None
         self.val_data = None
         self.test_data = None
-        self.train_scaler = None  # For inverse transform
+        self.train_base_prices = None
+        self.val_base_prices = None
+        self.test_base_prices = None
 
     def load_and_prepare(self):
-        """Load CSV and prepare data with 65%-15%-20% split."""
+        """Load CSV, compute returns, and split 65%-15%-20%."""
         # Load data
         self.data = pd.read_csv(self.data_path)
         print(f"Loaded data shape: {self.data.shape}")
@@ -58,26 +62,33 @@ class DataPreparator:
         selected_data = selected_data.dropna()
         print(f"Selected data shape after cleaning: {selected_data.shape}")
 
-        # Sequential split for time series (no shuffling)
-        n = len(selected_data)
+        # Compute percentage returns: r(t) = (price(t) - price(t-1)) / price(t-1)
+        prices = selected_data.values  # (N, n_features)
+        returns = (prices[1:] - prices[:-1]) / prices[:-1]  # (N-1, n_features)
+        base_prices = prices[:-1]  # price at t-1 for each return, aligned by index
+
+        # Sequential split on returns (no shuffling)
+        n = len(returns)
         train_end = int(0.65 * n)
         val_end = train_end + int(0.15 * n)
 
-        train_raw = selected_data.values[:train_end]
-        val_raw   = selected_data.values[train_end:val_end]
-        test_raw  = selected_data.values[val_end:]
+        self.train_data = returns[:train_end]
+        self.val_data   = returns[train_end:val_end]
+        self.test_data  = returns[val_end:]
 
-        # Fit scaler ONLY on training data to avoid data leakage.
-        # Val/Test may be slightly outside [0,1] if prices changed significantly.
-        self.scaler.fit(train_raw)
-        self.train_data = self.scaler.transform(train_raw)
-        self.val_data   = self.scaler.transform(val_raw)
-        self.test_data  = self.scaler.transform(test_raw)
+        # Store base prices for inverse_transform (price at t-1 for each return)
+        self.train_base_prices = base_prices[:train_end]
+        self.val_base_prices   = base_prices[train_end:val_end]
+        self.test_base_prices  = base_prices[val_end:]
 
+        n_total = n + 1  # original price count
         print(f"\nSplit Summary (Goodfellow 65%-15%-20%):")
+        print(f"  Prices: {n_total}, Returns: {n}")
         print(f"  Train: {len(self.train_data)} samples ({100*len(self.train_data)/n:.1f}%)")
         print(f"  Val:   {len(self.val_data)} samples ({100*len(self.val_data)/n:.1f}%)")
         print(f"  Test:  {len(self.test_data)} samples ({100*len(self.test_data)/n:.1f}%)")
+        print(f"  Train returns range: [{self.train_data.min():.4f}, {self.train_data.max():.4f}]")
+        print(f"  Test  returns range: [{self.test_data.min():.4f}, {self.test_data.max():.4f}]")
 
         return self.train_data, self.val_data, self.test_data
 
@@ -85,15 +96,44 @@ class DataPreparator:
         """Return target column names."""
         return self.target_columns
 
-    def inverse_transform(self, scaled_data):
-        """Transform scaled predictions back to original scale."""
-        return self.scaler.inverse_transform(scaled_data)
+    def inverse_transform(self, predicted_returns, split='test', lookback=0):
+        """Convert predicted returns back to original price scale.
+
+        After create_sequences(data, L), the k-th target is data[L+k].
+        The corresponding base price (price at t-1) is base_prices[L+k].
+
+        Args:
+            predicted_returns: Array of shape (n,) or (n, 1)
+            split: Which data split ('train', 'val', 'test')
+            lookback: Lookback window L used in create_sequences
+
+        Returns:
+            Predicted prices as array matching input shape.
+            price(t) = base_price(t-1) * (1 + predicted_return(t))
+        """
+        base_map = {
+            'train': self.train_base_prices,
+            'val': self.val_base_prices,
+            'test': self.test_base_prices,
+        }
+        base = base_map[split]
+
+        was_2d = (predicted_returns.ndim == 2)
+        flat = predicted_returns.flatten()
+        n = len(flat)
+
+        relevant_base = base[lookback:lookback + n, 0]  # Close price column
+        predicted_prices = relevant_base * (1 + flat)
+
+        if was_2d:
+            return predicted_prices.reshape(-1, 1)
+        return predicted_prices
 
 
 def create_sequences(data, lookback_window, target_column=0):
     """
     Create sequences using Loopback-Window approach with floating window.
-    Uses backward-looking window (same as sliceWindow.py implementation).
+    Uses backward-looking window approach.
 
     Args:
         data: 2D array of shape (n_samples, n_features)
@@ -104,24 +144,6 @@ def create_sequences(data, lookback_window, target_column=0):
         X: Sequences of shape (n_sequences, L, n_features)
         y: Target values of shape (n_sequences,) - single column
     """
-
-    """
-    Forward looking window for sequence creation.
-
-    X, y = [], []
-
-    for i in range(len(data) - lookback_window):
-        # Window: [i, i+1, ..., i+L-1] -> Target: [i+L]
-        X.append(data[i:i + lookback_window])
-        y.append(data[i + lookback_window])
-
-    return np.array(X), np.array(y)
-    """
-
-    """
-     Backward looking window for sequence creation.
-     
-     """
     X, y = [], []
 
     # Ensure data is 2D
@@ -140,16 +162,16 @@ def create_sequences(data, lookback_window, target_column=0):
 if __name__ == "__main__":
     # Example usage
     data_path = os.path.join(os.path.dirname(__file__), '..', 'stockData', 'preprocessedData', 'SP500_historical_data.csv')
-    
+
     preparator = DataPreparator(data_path)
     train, val, test = preparator.load_and_prepare()
-    
+
     # Example: Create sequences with lookback window L=20
     L = 20
     X_train, y_train = create_sequences(train, L)
     X_val, y_val = create_sequences(val, L)
     X_test, y_test = create_sequences(test, L)
-    
+
     print(f"\nSequence Shapes (Loopback Window L={L}):")
     print(f"  X_train: {X_train.shape}, y_train: {y_train.shape}")
     print(f"  X_val:   {X_val.shape}, y_val:   {y_val.shape}")

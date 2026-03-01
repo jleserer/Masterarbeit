@@ -1,12 +1,13 @@
 """
-Full Hyperparameter Grid Search for LSTM and CNN Models
-=========================================================
+Full Hyperparameter Grid Search for LSTM, CNN and GRU Models
+==============================================================
 Tests ALL possible combinations of hyperparameters.
 Skips already completed configurations.
 
 LSTM: 2 × 3 × 2 × 3 × 2 = 72 combinations
 CNN:  2 × 2 × 2 × 3 × 2 = 48 combinations
-Total: 120 combinations
+GRU:  2 × 3 × 2 × 3 × 2 = 72 combinations
+Total: 192 combinations
 """
 
 import os
@@ -22,7 +23,7 @@ from datetime import datetime
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Conv1D, MaxPooling1D, Flatten
+from tensorflow.keras.layers import LSTM, GRU, Dense, Dropout, Conv1D, MaxPooling1D, Flatten
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from data_preparation import DataPreparator, create_sequences
@@ -46,12 +47,32 @@ CNN_DROPOUT = [0.2, 0.4]
 CNN_BATCH_SIZE = [8, 16, 32]
 CNN_EPOCHS = [50, 100]
 
+# GRU parameters (same search space as LSTM)
+GRU_DROPOUT = [0.2, 0.4]
+GRU_DENSE_UNITS = [16, 32, 64]
+GRU_LEARNING_RATE = [0.001, 0.005]
+GRU_BATCH_SIZE = [8, 16, 32]
+GRU_EPOCHS = [50, 100]
+
 # Fixed parameters
 LOOKBACK_WINDOW = 60
 LSTM_UNITS = [128, 64]
+GRU_UNITS = [128, 64]
 CONV_FILTERS = [64, 128, 256]
 DENSE_UNITS_CNN = 64
 LEARNING_RATE_CNN = 0.001
+
+# All available indices
+INDICES = {
+    'SP500':     'SP500_historical_data.csv',
+    'DAX':       'DAX_historical_data.csv',
+    'NASDAQ':    'NASDAQ_historical_data.csv',
+    'FTSE100':   'FTSE100_historical_data.csv',
+    'HANG_SENG': 'HANG_SENG_historical_data.csv',
+    'NIKKEI':    'NIKKEI_historical_data.csv',
+    '10Y_Bond':  '10-Year Bond_historical_data.csv',
+    '30Y_Bond':  '30 Year Bond_historical_data.csv',
+}
 
 
 def generate_lstm_configs():
@@ -90,14 +111,34 @@ def generate_cnn_configs():
     return configs
 
 
-class FullGridSearchTuner:
-    """Manages full grid search for LSTM and CNN models."""
+def generate_gru_configs():
+    """Generate all GRU configurations."""
+    configs = []
+    for dropout, dense, lr, batch, epochs in itertools.product(
+        GRU_DROPOUT, GRU_DENSE_UNITS, GRU_LEARNING_RATE, GRU_BATCH_SIZE, GRU_EPOCHS
+    ):
+        name = f"d{dropout}_u{dense}_lr{lr}_b{batch}_e{epochs}"
+        configs.append({
+            'name': name,
+            'dropout': dropout,
+            'dense_units': dense,
+            'lr': lr,
+            'batch': batch,
+            'epochs': epochs
+        })
+    return configs
 
-    def __init__(self, data_path, output_dir=os.path.join('..', 'results', 'tuning')):
+
+class FullGridSearchTuner:
+    """Manages full grid search for LSTM, CNN and GRU models."""
+
+    def __init__(self, data_path, output_dir=os.path.join('..', 'results', 'tuning'), index_name='SP500'):
         self.data_path = data_path
         self.output_dir = output_dir
-        self.lstm_dir = os.path.join(output_dir, 'LSTM', 'SP500')
-        self.cnn_dir = os.path.join(output_dir, 'CNN', 'SP500')
+        self.index_name = index_name
+        self.lstm_dir = os.path.join(output_dir, 'LSTM', index_name)
+        self.cnn_dir = os.path.join(output_dir, 'CNN', index_name)
+        self.gru_dir = os.path.join(output_dir, 'GRU', index_name)
 
         # Data containers
         self.X_train = self.X_val = self.X_test = None
@@ -106,10 +147,12 @@ class FullGridSearchTuner:
         # Results
         self.lstm_results = []
         self.cnn_results = []
+        self.gru_results = []
 
         # Create directories
         os.makedirs(self.lstm_dir, exist_ok=True)
         os.makedirs(self.cnn_dir, exist_ok=True)
+        os.makedirs(self.gru_dir, exist_ok=True)
 
         # Load existing results
         self._load_existing_results()
@@ -128,6 +171,12 @@ class FullGridSearchTuner:
             with open(cnn_results_file, 'r') as f:
                 self.cnn_results = json.load(f)
             print(f"Loaded {len(self.cnn_results)} existing CNN results")
+
+        gru_results_file = os.path.join(self.gru_dir, 'all_results.json')
+        if os.path.exists(gru_results_file):
+            with open(gru_results_file, 'r') as f:
+                self.gru_results = json.load(f)
+            print(f"Loaded {len(self.gru_results)} existing GRU results")
 
     def _get_completed_configs(self, results):
         """Get set of completed config names."""
@@ -202,11 +251,30 @@ class FullGridSearchTuner:
 
         return model
 
+    def build_gru_model(self, config):
+        """Build GRU model with given configuration."""
+        n_features = self.X_train.shape[2]
+
+        model = Sequential([
+            GRU(GRU_UNITS[0], input_shape=(LOOKBACK_WINDOW, n_features),
+                 return_sequences=True, name='GRU_1'),
+            Dropout(config['dropout']),
+            GRU(GRU_UNITS[1], return_sequences=False, name='GRU_2'),
+            Dropout(config['dropout']),
+            Dense(config['dense_units'], activation='relu', name='Dense_1'),
+            Dropout(config['dropout']),
+            Dense(1, activation='linear', name='Output')
+        ])
+
+        optimizer = Adam(learning_rate=config['lr'])
+        model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
+
+        return model
+
     def train_model(self, model, config, verbose=0):
         """Train model and return history."""
-        # No EarlyStopping: with training-only normalization, val data may be outside [0,1]
-        # due to price appreciation over time, making val_loss systematically high and
-        # causing premature stopping. Fixed epochs ensure fair comparison across all configs.
+        # With percentage returns, val data has a similar distribution to training data.
+        # Fixed epochs ensure fair comparison across all configs.
         history = model.fit(
             self.X_train, self.y_train,
             validation_data=(self.X_val, self.y_val),
@@ -379,6 +447,65 @@ class FullGridSearchTuner:
             # Save after each config
             self._save_results(self.cnn_results, os.path.join(self.cnn_dir, 'all_results.json'))
 
+    def run_gru_tuning(self):
+        """Run full grid search for GRU."""
+        all_configs = generate_gru_configs()
+        completed = self._get_completed_configs(self.gru_results)
+        pending = [c for c in all_configs if c['name'] not in completed]
+
+        print("\n" + "=" * 70)
+        print("GRU FULL GRID SEARCH")
+        print("=" * 70)
+        print(f"Total configs: {len(all_configs)}")
+        print(f"Already completed: {len(completed)}")
+        print(f"Remaining: {len(pending)}")
+
+        for i, config in enumerate(pending, 1):
+            print(f"\n[{len(completed) + i}/{len(all_configs)}] Testing: {config['name']}")
+            print(f"  dropout={config['dropout']}, dense={config['dense_units']}, "
+                  f"lr={config['lr']}, batch={config['batch']}, epochs={config['epochs']}")
+
+            config_dir = os.path.join(self.gru_dir, config['name'])
+            os.makedirs(config_dir, exist_ok=True)
+
+            start_time = time.time()
+
+            try:
+                model = self.build_gru_model(config)
+                history = self.train_model(model, config, verbose=0)
+                metrics = self.evaluate_model(model)
+                training_time = time.time() - start_time
+
+                result = {
+                    'config_name': config['name'],
+                    'config': config,
+                    'metrics': metrics,
+                    'training_time': training_time,
+                    'epochs_trained': len(history.history['loss'])
+                }
+
+                self.save_training_plot(history, config['name'], 'GRU', config_dir)
+                model.save(os.path.join(config_dir, 'model.h5'))
+
+                with open(os.path.join(config_dir, 'results.json'), 'w') as f:
+                    json.dump(result, f, indent=2)
+
+                print(f"  Val Loss: {metrics['val_loss']:.6f}, Test MAE: {metrics['test_mae']:.6f}, "
+                      f"Time: {training_time:.1f}s")
+
+            except Exception as e:
+                print(f"  ERROR: {e}")
+                result = {
+                    'config_name': config['name'],
+                    'config': config,
+                    'error': str(e)
+                }
+
+            self.gru_results.append(result)
+
+            # Save after each config
+            self._save_results(self.gru_results, os.path.join(self.gru_dir, 'all_results.json'))
+
     def find_best_configs(self):
         """Find and save the best configurations."""
         print("\n" + "=" * 70)
@@ -399,10 +526,18 @@ class FullGridSearchTuner:
         else:
             best_cnn = None
 
+        # Find best GRU
+        valid_gru = [r for r in self.gru_results if 'metrics' in r]
+        if valid_gru:
+            best_gru = min(valid_gru, key=lambda x: x['metrics']['val_loss'])
+        else:
+            best_gru = None
+
         best_configs = {
             'timestamp': datetime.now().isoformat(),
             'total_lstm_configs': len(valid_lstm),
             'total_cnn_configs': len(valid_cnn),
+            'total_gru_configs': len(valid_gru),
         }
 
         if best_lstm:
@@ -444,6 +579,26 @@ class FullGridSearchTuner:
             print(f"  Val Loss: {best_cnn['metrics']['val_loss']:.6f}")
             print(f"  Test Loss: {best_cnn['metrics']['test_loss']:.6f}")
             print(f"  Test MAE: {best_cnn['metrics']['test_mae']:.6f}")
+
+        if best_gru:
+            best_configs['best_gru'] = {
+                'config_name': best_gru['config_name'],
+                'config': best_gru['config'],
+                'metrics': best_gru['metrics'],
+                'training_time': best_gru['training_time']
+            }
+            print("\n" + "-" * 70)
+            print("BEST GRU CONFIGURATION:")
+            print("-" * 70)
+            print(f"  Name: {best_gru['config_name']}")
+            print(f"  Dropout: {best_gru['config']['dropout']}")
+            print(f"  Dense Units: {best_gru['config']['dense_units']}")
+            print(f"  Learning Rate: {best_gru['config']['lr']}")
+            print(f"  Batch Size: {best_gru['config']['batch']}")
+            print(f"  Epochs: {best_gru['config']['epochs']}")
+            print(f"  Val Loss: {best_gru['metrics']['val_loss']:.6f}")
+            print(f"  Test Loss: {best_gru['metrics']['test_loss']:.6f}")
+            print(f"  Test MAE: {best_gru['metrics']['test_mae']:.6f}")
 
         # Save best configs
         with open(os.path.join(self.output_dir, 'best_configurations.json'), 'w') as f:
@@ -567,6 +722,7 @@ class FullGridSearchTuner:
         print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"LSTM total configs: {len(generate_lstm_configs())}")
         print(f"CNN total configs: {len(generate_cnn_configs())}")
+        print(f"GRU total configs: {len(generate_gru_configs())}")
 
         total_start = time.time()
 
@@ -576,6 +732,7 @@ class FullGridSearchTuner:
         # Run tuning
         self.run_lstm_tuning()
         self.run_cnn_tuning()
+        self.run_gru_tuning()
 
         # Find best configs
         best = self.find_best_configs()
@@ -598,7 +755,7 @@ class FullGridSearchTuner:
         return best
 
 
-def run_single_config(data_path, model_type, config_name, output_dir=os.path.join('..', 'results', 'tuning')):
+def run_single_config(data_path, model_type, config_name, output_dir=os.path.join('..', 'results', 'tuning'), index_name='SP500'):
     """
     Train and evaluate a single config. Designed for parallel dispatch.
     Each call is independent: loads data, builds model, trains, saves results.
@@ -609,16 +766,22 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
     tf.config.threading.set_intra_op_parallelism_threads(n_threads)
     tf.config.threading.set_inter_op_parallelism_threads(2)
 
-    tuner = FullGridSearchTuner(data_path, output_dir=output_dir)
+    tuner = FullGridSearchTuner(data_path, output_dir=output_dir, index_name=index_name)
     tuner.prepare_data()
 
     # Find the config by name
     if model_type == 'lstm':
         all_configs = generate_lstm_configs()
         config_dir_base = tuner.lstm_dir
-    else:
+    elif model_type == 'cnn':
         all_configs = generate_cnn_configs()
         config_dir_base = tuner.cnn_dir
+    elif model_type == 'gru':
+        all_configs = generate_gru_configs()
+        config_dir_base = tuner.gru_dir
+    else:
+        print(f"ERROR: Unknown model type '{model_type}'")
+        return None
 
     config = next((c for c in all_configs if c['name'] == config_name), None)
     if config is None:
@@ -632,8 +795,10 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
     try:
         if model_type == 'lstm':
             model = tuner.build_lstm_model(config)
-        else:
+        elif model_type == 'cnn':
             model = tuner.build_cnn_model(config)
+        else:
+            model = tuner.build_gru_model(config)
 
         history = tuner.train_model(model, config, verbose=0)
         metrics = tuner.evaluate_model(model)
@@ -673,16 +838,22 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Hyperparameter Grid Search')
-    parser.add_argument('--model', choices=['lstm', 'cnn', 'both'], default='both',
-                        help='Which model type to tune (default: both)')
+    parser.add_argument('--model', choices=['lstm', 'cnn', 'gru', 'all'], default='all',
+                        help='Which model type to tune (default: all)')
     parser.add_argument('--config', type=str, default=None,
                         help='Run single config by name (e.g. d0.2_u16_lr0.001_b8_e50)')
+    parser.add_argument('--index', type=str, default='SP500',
+                        help='Index to tune on (default: SP500)')
     args = parser.parse_args()
 
-    # Data path
+    # Resolve data path from index
+    if args.index not in INDICES:
+        print(f"Error: Unknown index '{args.index}'. Available: {list(INDICES.keys())}")
+        sys.exit(1)
+
     data_path = os.path.join(
         os.path.dirname(__file__),
-        '..', 'stockData', 'preprocessedData', 'SP500_historical_data.csv'
+        '..', 'stockData', 'preprocessedData', INDICES[args.index]
     )
 
     if not os.path.exists(data_path):
@@ -691,20 +862,22 @@ if __name__ == "__main__":
 
     # Single config mode (for parallel dispatch from pipeline)
     if args.config:
-        run_single_config(data_path, args.model, args.config)
+        run_single_config(data_path, args.model, args.config, index_name=args.index)
         sys.exit(0)
 
     # Full grid search mode
-    tuner = FullGridSearchTuner(data_path, output_dir=os.path.join('..', 'results', 'tuning'))
+    tuner = FullGridSearchTuner(data_path, output_dir=os.path.join('..', 'results', 'tuning'), index_name=args.index)
     tuner.prepare_data()
 
-    if args.model in ('lstm', 'both'):
+    if args.model in ('lstm', 'all'):
         tuner.run_lstm_tuning()
-    if args.model in ('cnn', 'both'):
+    if args.model in ('cnn', 'all'):
         tuner.run_cnn_tuning()
+    if args.model in ('gru', 'all'):
+        tuner.run_gru_tuning()
 
-    # Only run analysis when both models are available
-    if args.model == 'both':
+    # Only run analysis when all models are available
+    if args.model == 'all':
         tuner.find_best_configs()
         tuner.create_comparison_table()
         tuner.analyze_hyperparameters()
