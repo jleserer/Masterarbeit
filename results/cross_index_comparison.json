@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-03-01T05:14:52.437206",
+  "timestamp": "2026-03-01T15:22:52.305411",
   "lstm_configs": {
     "SP500": {
       "config_name": "d0.4_u64_lr0.001_b32_e50",
@@ -212,6 +212,7 @@
       "test_mae": 0.015068992972373962
     }
   },
+  "gru_configs": {},
   "lstm_sweep_results": {
     "SP500": {
       "best_L": 10,
@@ -278,6 +279,40 @@
     "30Y_Bond": {
       "best_L": 2,
       "mae": 0.014865851029753685
+    }
+  },
+  "gru_sweep_results": {
+    "SP500": {
+      "best_L": "?",
+      "mae": NaN
+    },
+    "DAX": {
+      "best_L": "?",
+      "mae": NaN
+    },
+    "NASDAQ": {
+      "best_L": "?",
+      "mae": NaN
+    },
+    "FTSE100": {
+      "best_L": "?",
+      "mae": NaN
+    },
+    "HANG_SENG": {
+      "best_L": "?",
+      "mae": NaN
+    },
+    "NIKKEI": {
+      "best_L": "?",
+      "mae": NaN
+    },
+    "10Y_Bond": {
+      "best_L": "?",
+      "mae": NaN
+    },
+    "30Y_Bond": {
+      "best_L": "?",
+      "mae": NaN
     }
   }
 }

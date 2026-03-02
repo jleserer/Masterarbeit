@@ -4,10 +4,11 @@ Full Hyperparameter Grid Search for LSTM, CNN and GRU Models
 Tests ALL possible combinations of hyperparameters.
 Skips already completed configurations.
 
-LSTM: 2 × 3 × 2 × 3 × 2 = 72 combinations
-CNN:  2 × 2 × 2 × 3 × 2 = 48 combinations
-GRU:  2 × 3 × 2 × 3 × 2 = 72 combinations
-Total: 192 combinations
+LSTM:     2 × 2 × 2 × 3 × 2 = 48 combinations
+CNN:      2 × 2 × 2 × 3 × 2 = 48 combinations
+GRU:      2 × 2 × 2 × 3 × 2 = 48 combinations
+Informer: 2 × 2 × 2 × 2 × 2 × 2 = 64 combinations
+Total: 208 combinations
 """
 
 import os
@@ -35,7 +36,7 @@ from data_preparation import DataPreparator, create_sequences
 
 # LSTM parameters
 LSTM_DROPOUT = [0.2, 0.4]
-LSTM_DENSE_UNITS = [16, 32, 64]
+LSTM_DENSE_UNITS = [16, 32]
 LSTM_LEARNING_RATE = [0.001, 0.005]
 LSTM_BATCH_SIZE = [8, 16, 32]
 LSTM_EPOCHS = [50, 100]
@@ -49,10 +50,23 @@ CNN_EPOCHS = [50, 100]
 
 # GRU parameters (same search space as LSTM)
 GRU_DROPOUT = [0.2, 0.4]
-GRU_DENSE_UNITS = [16, 32, 64]
+GRU_DENSE_UNITS = [16, 32]
 GRU_LEARNING_RATE = [0.001, 0.005]
 GRU_BATCH_SIZE = [8, 16, 32]
 GRU_EPOCHS = [50, 100]
+
+# Informer parameters
+INFORMER_D_MODEL = [32, 64]
+INFORMER_N_HEADS = [4, 8]
+INFORMER_DROPOUT = [0.05, 0.1]
+INFORMER_LEARNING_RATE = [0.0001, 0.001]
+INFORMER_BATCH_SIZE = [16, 32]
+INFORMER_EPOCHS = [50, 100]
+
+# Fixed Informer architecture
+INFORMER_E_LAYERS = 2
+INFORMER_D_LAYERS = 1
+INFORMER_FACTOR = 5
 
 # Fixed parameters
 LOOKBACK_WINDOW = 60
@@ -129,8 +143,28 @@ def generate_gru_configs():
     return configs
 
 
+def generate_informer_configs():
+    """Generate all Informer configurations."""
+    configs = []
+    for d_model, n_heads, dropout, lr, batch, epochs in itertools.product(
+        INFORMER_D_MODEL, INFORMER_N_HEADS, INFORMER_DROPOUT,
+        INFORMER_LEARNING_RATE, INFORMER_BATCH_SIZE, INFORMER_EPOCHS
+    ):
+        name = f"dm{d_model}_h{n_heads}_d{dropout}_lr{lr}_b{batch}_e{epochs}"
+        configs.append({
+            'name': name,
+            'd_model': d_model,
+            'n_heads': n_heads,
+            'dropout': dropout,
+            'lr': lr,
+            'batch': batch,
+            'epochs': epochs
+        })
+    return configs
+
+
 class FullGridSearchTuner:
-    """Manages full grid search for LSTM, CNN and GRU models."""
+    """Manages full grid search for LSTM, CNN, GRU and Informer models."""
 
     def __init__(self, data_path, output_dir=os.path.join('..', 'results', 'tuning'), index_name='SP500'):
         self.data_path = data_path
@@ -139,6 +173,7 @@ class FullGridSearchTuner:
         self.lstm_dir = os.path.join(output_dir, 'LSTM', index_name)
         self.cnn_dir = os.path.join(output_dir, 'CNN', index_name)
         self.gru_dir = os.path.join(output_dir, 'GRU', index_name)
+        self.informer_dir = os.path.join(output_dir, 'INFORMER', index_name)
 
         # Data containers
         self.X_train = self.X_val = self.X_test = None
@@ -148,11 +183,13 @@ class FullGridSearchTuner:
         self.lstm_results = []
         self.cnn_results = []
         self.gru_results = []
+        self.informer_results = []
 
         # Create directories
         os.makedirs(self.lstm_dir, exist_ok=True)
         os.makedirs(self.cnn_dir, exist_ok=True)
         os.makedirs(self.gru_dir, exist_ok=True)
+        os.makedirs(self.informer_dir, exist_ok=True)
 
         # Load existing results
         self._load_existing_results()
@@ -177,6 +214,12 @@ class FullGridSearchTuner:
             with open(gru_results_file, 'r') as f:
                 self.gru_results = json.load(f)
             print(f"Loaded {len(self.gru_results)} existing GRU results")
+
+        informer_results_file = os.path.join(self.informer_dir, 'all_results.json')
+        if os.path.exists(informer_results_file):
+            with open(informer_results_file, 'r') as f:
+                self.informer_results = json.load(f)
+            print(f"Loaded {len(self.informer_results)} existing Informer results")
 
     def _get_completed_configs(self, results):
         """Get set of completed config names."""
@@ -271,8 +314,46 @@ class FullGridSearchTuner:
 
         return model
 
+    def build_informer_model(self, config):
+        """Build Informer model with given configuration (PyTorch)."""
+        from informer_model import build_informer
+        n_features = self.X_train.shape[2]
+        informer_config = {**config,
+                           'e_layers': INFORMER_E_LAYERS,
+                           'd_layers': INFORMER_D_LAYERS,
+                           'factor': INFORMER_FACTOR}
+        model = build_informer(LOOKBACK_WINDOW, n_features, informer_config)
+        return model
+
+    def train_informer_model(self, model, config, verbose=0):
+        """Train Informer model with PyTorch training loop. Returns history dict."""
+        from informer_model import train_informer
+        history = train_informer(model, self.X_train, self.y_train,
+                                 config, LOOKBACK_WINDOW, verbose=verbose)
+        return history
+
+    def evaluate_informer_model(self, model):
+        """Evaluate Informer model on all splits. Returns metrics dict."""
+        from informer_model import evaluate_informer
+
+        train_loss, train_mae = evaluate_informer(model, self.X_train, self.y_train, LOOKBACK_WINDOW)
+        val_loss, val_mae = evaluate_informer(model, self.X_val, self.y_val, LOOKBACK_WINDOW)
+        test_loss, test_mae = evaluate_informer(model, self.X_test, self.y_test, LOOKBACK_WINDOW)
+
+        return {
+            'train_loss': float(train_loss),
+            'train_mae': float(train_mae),
+            'train_rmse': float(np.sqrt(train_loss)),
+            'val_loss': float(val_loss),
+            'val_mae': float(val_mae),
+            'val_rmse': float(np.sqrt(val_loss)),
+            'test_loss': float(test_loss),
+            'test_mae': float(test_mae),
+            'test_rmse': float(np.sqrt(test_loss))
+        }
+
     def train_model(self, model, config, verbose=0):
-        """Train model and return history."""
+        """Train Keras model and return history."""
         # With percentage returns, val data has a similar distribution to training data.
         # Fixed epochs ensure fair comparison across all configs.
         history = model.fit(
@@ -286,7 +367,7 @@ class FullGridSearchTuner:
         return history
 
     def evaluate_model(self, model):
-        """Evaluate model and return metrics."""
+        """Evaluate Keras model and return metrics."""
         train_loss, train_mae = model.evaluate(self.X_train, self.y_train, verbose=0)
         val_loss, val_mae = model.evaluate(self.X_val, self.y_val, verbose=0)
         test_loss, test_mae = model.evaluate(self.X_test, self.y_test, verbose=0)
@@ -294,10 +375,13 @@ class FullGridSearchTuner:
         return {
             'train_loss': float(train_loss),
             'train_mae': float(train_mae),
+            'train_rmse': float(np.sqrt(train_loss)),
             'val_loss': float(val_loss),
             'val_mae': float(val_mae),
+            'val_rmse': float(np.sqrt(val_loss)),
             'test_loss': float(test_loss),
-            'test_mae': float(test_mae)
+            'test_mae': float(test_mae),
+            'test_rmse': float(np.sqrt(test_loss))
         }
 
     def save_training_plot(self, history, config_name, model_type, output_dir):
@@ -373,7 +457,7 @@ class FullGridSearchTuner:
                     json.dump(result, f, indent=2)
 
                 print(f"  Val Loss: {metrics['val_loss']:.6f}, Test MAE: {metrics['test_mae']:.6f}, "
-                      f"Time: {training_time:.1f}s")
+                      f"RMSE: {metrics['test_rmse']:.6f}, Time: {training_time:.1f}s")
 
             except Exception as e:
                 print(f"  ERROR: {e}")
@@ -432,7 +516,7 @@ class FullGridSearchTuner:
                     json.dump(result, f, indent=2)
 
                 print(f"  Val Loss: {metrics['val_loss']:.6f}, Test MAE: {metrics['test_mae']:.6f}, "
-                      f"Time: {training_time:.1f}s")
+                      f"RMSE: {metrics['test_rmse']:.6f}, Time: {training_time:.1f}s")
 
             except Exception as e:
                 print(f"  ERROR: {e}")
@@ -491,7 +575,7 @@ class FullGridSearchTuner:
                     json.dump(result, f, indent=2)
 
                 print(f"  Val Loss: {metrics['val_loss']:.6f}, Test MAE: {metrics['test_mae']:.6f}, "
-                      f"Time: {training_time:.1f}s")
+                      f"RMSE: {metrics['test_rmse']:.6f}, Time: {training_time:.1f}s")
 
             except Exception as e:
                 print(f"  ERROR: {e}")
@@ -505,6 +589,79 @@ class FullGridSearchTuner:
 
             # Save after each config
             self._save_results(self.gru_results, os.path.join(self.gru_dir, 'all_results.json'))
+
+    def run_informer_tuning(self):
+        """Run full grid search for Informer (PyTorch)."""
+        all_configs = generate_informer_configs()
+        completed = self._get_completed_configs(self.informer_results)
+        pending = [c for c in all_configs if c['name'] not in completed]
+
+        print("\n" + "=" * 70)
+        print("INFORMER FULL GRID SEARCH")
+        print("=" * 70)
+        print(f"Total configs: {len(all_configs)}")
+        print(f"Already completed: {len(completed)}")
+        print(f"Remaining: {len(pending)}")
+
+        for i, config in enumerate(pending, 1):
+            print(f"\n[{len(completed) + i}/{len(all_configs)}] Testing: {config['name']}")
+            print(f"  d_model={config['d_model']}, n_heads={config['n_heads']}, "
+                  f"dropout={config['dropout']}, lr={config['lr']}, "
+                  f"batch={config['batch']}, epochs={config['epochs']}")
+
+            config_dir = os.path.join(self.informer_dir, config['name'])
+            os.makedirs(config_dir, exist_ok=True)
+
+            start_time = time.time()
+
+            try:
+                model = self.build_informer_model(config)
+                history = self.train_informer_model(model, config, verbose=0)
+                metrics = self.evaluate_informer_model(model)
+                training_time = time.time() - start_time
+
+                result = {
+                    'config_name': config['name'],
+                    'config': config,
+                    'metrics': metrics,
+                    'training_time': training_time,
+                    'epochs_trained': len(history['train_loss'])
+                }
+
+                # Save training plot
+                fig, ax = plt.subplots(1, 1, figsize=(8, 4))
+                ax.plot(history['train_loss'], label='Train Loss')
+                ax.set_xlabel('Epoch')
+                ax.set_ylabel('Loss (MSE)')
+                ax.set_title(f'INFORMER - {config["name"]}')
+                ax.legend()
+                ax.grid(True)
+                plt.tight_layout()
+                plt.savefig(os.path.join(config_dir, f'{config["name"]}_history.png'), dpi=80)
+                plt.close()
+
+                # Save model
+                import torch
+                torch.save(model.state_dict(), os.path.join(config_dir, 'model.pt'))
+
+                with open(os.path.join(config_dir, 'results.json'), 'w') as f:
+                    json.dump(result, f, indent=2)
+
+                print(f"  Val Loss: {metrics['val_loss']:.6f}, Test MAE: {metrics['test_mae']:.6f}, "
+                      f"RMSE: {metrics['test_rmse']:.6f}, Time: {training_time:.1f}s")
+
+            except Exception as e:
+                print(f"  ERROR: {e}")
+                result = {
+                    'config_name': config['name'],
+                    'config': config,
+                    'error': str(e)
+                }
+
+            self.informer_results.append(result)
+
+            # Save after each config
+            self._save_results(self.informer_results, os.path.join(self.informer_dir, 'all_results.json'))
 
     def find_best_configs(self):
         """Find and save the best configurations."""
@@ -533,11 +690,19 @@ class FullGridSearchTuner:
         else:
             best_gru = None
 
+        # Find best Informer
+        valid_informer = [r for r in self.informer_results if 'metrics' in r]
+        if valid_informer:
+            best_informer = min(valid_informer, key=lambda x: x['metrics']['val_loss'])
+        else:
+            best_informer = None
+
         best_configs = {
             'timestamp': datetime.now().isoformat(),
             'total_lstm_configs': len(valid_lstm),
             'total_cnn_configs': len(valid_cnn),
             'total_gru_configs': len(valid_gru),
+            'total_informer_configs': len(valid_informer),
         }
 
         if best_lstm:
@@ -559,6 +724,7 @@ class FullGridSearchTuner:
             print(f"  Val Loss: {best_lstm['metrics']['val_loss']:.6f}")
             print(f"  Test Loss: {best_lstm['metrics']['test_loss']:.6f}")
             print(f"  Test MAE: {best_lstm['metrics']['test_mae']:.6f}")
+            print(f"  Test RMSE: {best_lstm['metrics'].get('test_rmse', np.sqrt(best_lstm['metrics']['test_loss'])):.6f}")
 
         if best_cnn:
             best_configs['best_cnn'] = {
@@ -579,6 +745,7 @@ class FullGridSearchTuner:
             print(f"  Val Loss: {best_cnn['metrics']['val_loss']:.6f}")
             print(f"  Test Loss: {best_cnn['metrics']['test_loss']:.6f}")
             print(f"  Test MAE: {best_cnn['metrics']['test_mae']:.6f}")
+            print(f"  Test RMSE: {best_cnn['metrics'].get('test_rmse', np.sqrt(best_cnn['metrics']['test_loss'])):.6f}")
 
         if best_gru:
             best_configs['best_gru'] = {
@@ -599,6 +766,29 @@ class FullGridSearchTuner:
             print(f"  Val Loss: {best_gru['metrics']['val_loss']:.6f}")
             print(f"  Test Loss: {best_gru['metrics']['test_loss']:.6f}")
             print(f"  Test MAE: {best_gru['metrics']['test_mae']:.6f}")
+            print(f"  Test RMSE: {best_gru['metrics'].get('test_rmse', np.sqrt(best_gru['metrics']['test_loss'])):.6f}")
+
+        if best_informer:
+            best_configs['best_informer'] = {
+                'config_name': best_informer['config_name'],
+                'config': best_informer['config'],
+                'metrics': best_informer['metrics'],
+                'training_time': best_informer['training_time']
+            }
+            print("\n" + "-" * 70)
+            print("BEST INFORMER CONFIGURATION:")
+            print("-" * 70)
+            print(f"  Name: {best_informer['config_name']}")
+            print(f"  d_model: {best_informer['config']['d_model']}")
+            print(f"  n_heads: {best_informer['config']['n_heads']}")
+            print(f"  Dropout: {best_informer['config']['dropout']}")
+            print(f"  Learning Rate: {best_informer['config']['lr']}")
+            print(f"  Batch Size: {best_informer['config']['batch']}")
+            print(f"  Epochs: {best_informer['config']['epochs']}")
+            print(f"  Val Loss: {best_informer['metrics']['val_loss']:.6f}")
+            print(f"  Test Loss: {best_informer['metrics']['test_loss']:.6f}")
+            print(f"  Test MAE: {best_informer['metrics']['test_mae']:.6f}")
+            print(f"  Test RMSE: {best_informer['metrics'].get('test_rmse', np.sqrt(best_informer['metrics']['test_loss'])):.6f}")
 
         # Save best configs
         with open(os.path.join(self.output_dir, 'best_configurations.json'), 'w') as f:
@@ -617,26 +807,43 @@ class FullGridSearchTuner:
         sorted_lstm = sorted(valid_lstm, key=lambda x: x['metrics']['val_loss'])[:10]
 
         print("\nLSTM TOP 10 (sorted by Val Loss):")
-        print("-" * 100)
-        print(f"{'Rank':<5} {'Config':<35} {'ValLoss':<12} {'TestMAE':<12} {'Time':<10}")
-        print("-" * 100)
+        print("-" * 115)
+        print(f"{'Rank':<5} {'Config':<35} {'ValLoss':<12} {'TestMAE':<12} {'TestRMSE':<12} {'Time':<10}")
+        print("-" * 115)
 
         for i, r in enumerate(sorted_lstm, 1):
             m = r['metrics']
-            print(f"{i:<5} {r['config_name']:<35} {m['val_loss']:<12.6f} {m['test_mae']:<12.6f} {r['training_time']:<10.1f}s")
+            rmse = m.get('test_rmse', np.sqrt(m['test_loss']))
+            print(f"{i:<5} {r['config_name']:<35} {m['val_loss']:<12.6f} {m['test_mae']:<12.6f} {rmse:<12.6f} {r['training_time']:<10.1f}s")
 
         # CNN Top 10
         valid_cnn = [r for r in self.cnn_results if 'metrics' in r]
         sorted_cnn = sorted(valid_cnn, key=lambda x: x['metrics']['val_loss'])[:10]
 
         print("\nCNN TOP 10 (sorted by Val Loss):")
-        print("-" * 100)
-        print(f"{'Rank':<5} {'Config':<35} {'ValLoss':<12} {'TestMAE':<12} {'Time':<10}")
-        print("-" * 100)
+        print("-" * 115)
+        print(f"{'Rank':<5} {'Config':<35} {'ValLoss':<12} {'TestMAE':<12} {'TestRMSE':<12} {'Time':<10}")
+        print("-" * 115)
 
         for i, r in enumerate(sorted_cnn, 1):
             m = r['metrics']
-            print(f"{i:<5} {r['config_name']:<35} {m['val_loss']:<12.6f} {m['test_mae']:<12.6f} {r['training_time']:<10.1f}s")
+            rmse = m.get('test_rmse', np.sqrt(m['test_loss']))
+            print(f"{i:<5} {r['config_name']:<35} {m['val_loss']:<12.6f} {m['test_mae']:<12.6f} {rmse:<12.6f} {r['training_time']:<10.1f}s")
+
+        # Informer Top 10
+        valid_informer = [r for r in self.informer_results if 'metrics' in r]
+        sorted_informer = sorted(valid_informer, key=lambda x: x['metrics']['val_loss'])[:10]
+
+        if sorted_informer:
+            print("\nINFORMER TOP 10 (sorted by Val Loss):")
+            print("-" * 115)
+            print(f"{'Rank':<5} {'Config':<35} {'ValLoss':<12} {'TestMAE':<12} {'TestRMSE':<12} {'Time':<10}")
+            print("-" * 115)
+
+            for i, r in enumerate(sorted_informer, 1):
+                m = r['metrics']
+                rmse = m.get('test_rmse', np.sqrt(m['test_loss']))
+                print(f"{i:<5} {r['config_name']:<35} {m['val_loss']:<12.6f} {m['test_mae']:<12.6f} {rmse:<12.6f} {r['training_time']:<10.1f}s")
 
     def analyze_hyperparameters(self):
         """Analyze which hyperparameters perform best on average."""
@@ -723,6 +930,7 @@ class FullGridSearchTuner:
         print(f"LSTM total configs: {len(generate_lstm_configs())}")
         print(f"CNN total configs: {len(generate_cnn_configs())}")
         print(f"GRU total configs: {len(generate_gru_configs())}")
+        print(f"Informer total configs: {len(generate_informer_configs())}")
 
         total_start = time.time()
 
@@ -733,6 +941,7 @@ class FullGridSearchTuner:
         self.run_lstm_tuning()
         self.run_cnn_tuning()
         self.run_gru_tuning()
+        self.run_informer_tuning()
 
         # Find best configs
         best = self.find_best_configs()
@@ -760,11 +969,15 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
     Train and evaluate a single config. Designed for parallel dispatch.
     Each call is independent: loads data, builds model, trains, saves results.
     """
-    import tensorflow as tf
-    # Limit TF threads to avoid oversubscription when running in parallel
-    n_threads = int(os.environ.get('TF_WORKER_THREADS', '4'))
-    tf.config.threading.set_intra_op_parallelism_threads(n_threads)
-    tf.config.threading.set_inter_op_parallelism_threads(2)
+    if model_type != 'informer':
+        import tensorflow as tf
+        # Limit TF threads to avoid oversubscription when running in parallel
+        n_threads = int(os.environ.get('TF_WORKER_THREADS', '4'))
+        tf.config.threading.set_intra_op_parallelism_threads(n_threads)
+        tf.config.threading.set_inter_op_parallelism_threads(2)
+    else:
+        import torch
+        torch.set_num_threads(int(os.environ.get('TF_WORKER_THREADS', '4')))
 
     tuner = FullGridSearchTuner(data_path, output_dir=output_dir, index_name=index_name)
     tuner.prepare_data()
@@ -779,6 +992,9 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
     elif model_type == 'gru':
         all_configs = generate_gru_configs()
         config_dir_base = tuner.gru_dir
+    elif model_type == 'informer':
+        all_configs = generate_informer_configs()
+        config_dir_base = tuner.informer_dir
     else:
         print(f"ERROR: Unknown model type '{model_type}'")
         return None
@@ -793,34 +1009,63 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
 
     start_time = time.time()
     try:
-        if model_type == 'lstm':
-            model = tuner.build_lstm_model(config)
-        elif model_type == 'cnn':
-            model = tuner.build_cnn_model(config)
+        if model_type == 'informer':
+            model = tuner.build_informer_model(config)
+            history = tuner.train_informer_model(model, config, verbose=0)
+            metrics = tuner.evaluate_informer_model(model)
+            training_time = time.time() - start_time
+
+            result = {
+                'config_name': config['name'],
+                'config': config,
+                'metrics': metrics,
+                'training_time': training_time,
+                'epochs_trained': len(history['train_loss'])
+            }
+
+            # Save training plot
+            fig, ax = plt.subplots(1, 1, figsize=(8, 4))
+            ax.plot(history['train_loss'], label='Train Loss')
+            ax.set_xlabel('Epoch')
+            ax.set_ylabel('Loss (MSE)')
+            ax.set_title(f'INFORMER - {config["name"]}')
+            ax.legend()
+            ax.grid(True)
+            plt.tight_layout()
+            plt.savefig(os.path.join(config_dir, f'{config["name"]}_history.png'), dpi=80)
+            plt.close()
+
+            import torch
+            torch.save(model.state_dict(), os.path.join(config_dir, 'model.pt'))
         else:
-            model = tuner.build_gru_model(config)
+            if model_type == 'lstm':
+                model = tuner.build_lstm_model(config)
+            elif model_type == 'cnn':
+                model = tuner.build_cnn_model(config)
+            else:
+                model = tuner.build_gru_model(config)
 
-        history = tuner.train_model(model, config, verbose=0)
-        metrics = tuner.evaluate_model(model)
-        training_time = time.time() - start_time
+            history = tuner.train_model(model, config, verbose=0)
+            metrics = tuner.evaluate_model(model)
+            training_time = time.time() - start_time
 
-        result = {
-            'config_name': config['name'],
-            'config': config,
-            'metrics': metrics,
-            'training_time': training_time,
-            'epochs_trained': len(history.history['loss'])
-        }
+            result = {
+                'config_name': config['name'],
+                'config': config,
+                'metrics': metrics,
+                'training_time': training_time,
+                'epochs_trained': len(history.history['loss'])
+            }
 
-        tuner.save_training_plot(history, config['name'], model_type.upper(), config_dir)
-        model.save(os.path.join(config_dir, 'model.h5'))
+            tuner.save_training_plot(history, config['name'], model_type.upper(), config_dir)
+            model.save(os.path.join(config_dir, 'model.h5'))
 
         with open(os.path.join(config_dir, 'results.json'), 'w') as f:
             json.dump(result, f, indent=2)
 
         print(f"  [{model_type.upper()}] {config['name']}: "
               f"Val Loss={metrics['val_loss']:.6f}, Test MAE={metrics['test_mae']:.6f}, "
-              f"Time={training_time:.1f}s")
+              f"RMSE={metrics['test_rmse']:.6f}, Time={training_time:.1f}s")
 
     except Exception as e:
         print(f"  [{model_type.upper()}] {config['name']}: ERROR: {e}")
@@ -838,7 +1083,7 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Hyperparameter Grid Search')
-    parser.add_argument('--model', choices=['lstm', 'cnn', 'gru', 'all'], default='all',
+    parser.add_argument('--model', choices=['lstm', 'cnn', 'gru', 'informer', 'all'], default='all',
                         help='Which model type to tune (default: all)')
     parser.add_argument('--config', type=str, default=None,
                         help='Run single config by name (e.g. d0.2_u16_lr0.001_b8_e50)')

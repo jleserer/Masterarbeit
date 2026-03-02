@@ -1,6 +1,6 @@
 # Stock Price Prediction Models
 
-Implementierung von LSTM, CNN und GRU Modellen zur Vorhersage von Aktienkursen basierend auf historischen Daten.
+Implementierung von LSTM, CNN, GRU und Informer Modellen zur Vorhersage von Aktienkursen basierend auf historischen Daten.
 
 ## Quick Start
 
@@ -14,7 +14,10 @@ python cnn_model.py
 # GRU trainieren
 python gru_model.py
 
-# Alle drei vergleichen
+# Informer trainieren (PyTorch)
+python informer_model.py
+
+# Alle vier vergleichen
 python model_comparison.py
 
 # Hyperparameter-Tuning (Grid Search)
@@ -29,19 +32,21 @@ python evaluate_lookback_window_sweep.py
 ```
 models/
 ├── data_preparation.py             ← Data loading & 65%-15%-20% Split (Goodfellow)
-├── lstm_model.py                   ← LSTM-Implementierung (128→64 Units)
-├── cnn_model.py                    ← CNN-Implementierung (64→128→256 Filter)
-├── gru_model.py                    ← GRU-Implementierung (128→64 Units)
-├── model_comparison.py             ← Training & Vergleich aller drei Modelle
-├── hyperparameter_tuning.py        ← Full Grid Search (CNN: 48, LSTM: 72, GRU: 72 Configs)
+├── lstm_model.py                   ← LSTM-Implementierung (128→64 Units, TensorFlow)
+├── cnn_model.py                    ← CNN-Implementierung (64→128→256 Filter, TensorFlow)
+├── gru_model.py                    ← GRU-Implementierung (128→64 Units, TensorFlow)
+├── informer_model.py               ← Informer-Implementierung (ProbSparse Attention, PyTorch)
+├── model_comparison.py             ← Training & Vergleich aller Modelle
+├── hyperparameter_tuning.py        ← Full Grid Search (LSTM: 48, CNN: 48, GRU: 48, Informer: 64 Configs)
 ├── evaluate_lookback_window_sweep.py ← Lookback-Window-Sweep L=1..60
 └── README.md                       ← Dieses Dokument
 
 results/
 ├── tuning/
+│   ├── LSTM/{INDEX}/               ← LSTM Tuning-Ergebnisse (48 Configs pro Index)
 │   ├── CNN/{INDEX}/                ← CNN Tuning-Ergebnisse (48 Configs pro Index)
-│   ├── LSTM/{INDEX}/               ← LSTM Tuning-Ergebnisse (72 Configs pro Index)
-│   └── GRU/{INDEX}/                ← GRU Tuning-Ergebnisse (72 Configs pro Index)
+│   ├── GRU/{INDEX}/                ← GRU Tuning-Ergebnisse (48 Configs pro Index)
+│   └── INFORMER/{INDEX}/           ← Informer Tuning-Ergebnisse (64 Configs pro Index)
 ├── lookback_sweep/{INDEX}/         ← Window-Sweep-Analyse pro Index
 │   ├── 01_mae_vs_lookback_window.png
 │   ├── 02_{MODEL}_predictions_vs_actual_timeseries.png
@@ -54,10 +59,11 @@ results/
 
 ## Überblick
 
-Dieses Projekt implementiert drei Deep Learning Modelle:
-- **LSTM** (Long Short-Term Memory): Zur Erfassung von zeitlichen Abhängigkeiten
-- **CNN** (Convolutional Neural Network): Zur räumlichen Merkmalserkennung in Zeitreihen
-- **GRU** (Gated Recurrent Unit): Leichtgewichtige Alternative zu LSTM
+Dieses Projekt implementiert vier Deep Learning Modelle:
+- **LSTM** (Long Short-Term Memory): Zur Erfassung von zeitlichen Abhängigkeiten (TensorFlow)
+- **CNN** (Convolutional Neural Network): Zur räumlichen Merkmalserkennung in Zeitreihen (TensorFlow)
+- **GRU** (Gated Recurrent Unit): Leichtgewichtige Alternative zu LSTM (TensorFlow)
+- **Informer** (Transformer-Variante): ProbSparse Self-Attention für effiziente Zeitreihenvorhersage (PyTorch)
 
 ### Data Split (Goodfellow et al., 2016)
 
@@ -190,6 +196,55 @@ Dense(1, activation='linear') [Output: Close-Return]
 | Batch Size | 32 | Konsistent mit LSTM/GRU |
 | Epochs | 100 | Mit Early Stopping |
 
+## Informer-Modell (PyTorch)
+
+### Architektur
+
+```
+Input (L, n_features)
+        ↓
+  [Data Embedding]
+  Linear(n_features → d_model) + Positional Encoding
+        ↓
+  [Encoder Layer 1]
+  ProbSparse Self-Attention + Feed-Forward + LayerNorm
+        ↓
+  [Distilling Layer]
+  Conv1D + MaxPool (L → L/2)
+        ↓
+  [Encoder Layer 2]
+  ProbSparse Self-Attention + Feed-Forward + LayerNorm
+        ↓
+  [Decoder]
+  Input: letztes L/2 Zeitschritte + 1 Zero-Padding
+  Self-Attention + Cross-Attention + Feed-Forward
+        ↓
+  Linear Projection → (1,) [Output: Close-Log-Return]
+```
+
+### ProbSparse Self-Attention
+
+Kern-Innovation des Informers (Zhou et al., 2021):
+- Misst die "Sparsity" jeder Query via KL-Divergenz zur Gleichverteilung
+- Wählt nur die Top-u (u = c × ln(L)) aktivsten Queries aus
+- Komplexität: O(L log L) statt O(L²) bei Standard-Attention
+
+### Hyperparameter
+
+| Parameter | Wert | Begründung |
+|-----------|------|-----------|
+| Lookback Window | 60 | Gleich wie LSTM/CNN/GRU |
+| d_model | 64 | Embedding-Dimension |
+| n_heads | 8 | Multi-Head Attention |
+| e_layers | 2 | Encoder-Schichten |
+| d_layers | 1 | Decoder-Schicht |
+| d_ff | 256 | Feed-Forward Dimension (4 × d_model) |
+| Dropout Rate | 0.05 | Niedrigerer Dropout für Transformer |
+| Learning Rate | 0.0001 | Niedrigere LR für Transformer-Stabilität |
+| Batch Size | 32 | Balance zwischen Stabilität und Effizienz |
+| Epochs | 100 | Mit Early Stopping |
+| factor | 5 | ProbSparse Attention Sampling-Faktor |
+
 ## Module
 
 ### `data_preparation.py`
@@ -249,10 +304,35 @@ LEARNING_RATE = 0.001
 
 Selbes Interface wie LSTM/GRU für Vergleichbarkeit.
 
+### `informer_model.py` (PyTorch)
+
+**InformerModel Klasse:**
+
+Konfigurierbare Parameter:
+```python
+LOOKBACK_WINDOW = 60
+D_MODEL = 64
+N_HEADS = 8
+E_LAYERS = 2
+D_LAYERS = 1
+D_FF = 256          # 4 * D_MODEL
+DROPOUT = 0.05
+FACTOR = 5
+LEARNING_RATE = 0.0001
+```
+
+Selbes Interface wie LSTM/GRU/CNN (prepare_data, build_model, train, evaluate, predict, plot_results, save_model).
+
+Zusätzliche Helper-Funktionen für Tuning/Sweep:
+- `build_informer(lookback_window, n_features, config)`: Erstellt Informer-Modell aus Config-Dict
+- `train_informer(model, X_train, y_train, config, lookback_window)`: PyTorch Training-Loop
+- `evaluate_informer(model, X_data, y_data, lookback_window)`: Evaluation (MSE, MAE)
+- `predict_informer(model, X_data, lookback_window)`: Vorhersagen generieren
+
 ### `model_comparison.py`
 
 **Vergleichs-Script:**
-- Führt LSTM, CNN und GRU nacheinander aus
+- Führt LSTM, CNN, GRU und Informer nacheinander aus
 - Misst Trainingszeit
 - Erstellt JSON-Report
 
@@ -260,9 +340,10 @@ Selbes Interface wie LSTM/GRU für Vergleichbarkeit.
 
 **FullGridSearchTuner Klasse:**
 - Vollständiger Grid Search über alle Hyperparameter-Kombinationen
+- LSTM: 48 Konfigurationen (dropout × dense_units × lr × batch × epochs)
 - CNN: 48 Konfigurationen (kernel × pool × dropout × batch × epochs)
-- LSTM: 72 Konfigurationen (dropout × dense_units × lr × batch × epochs)
-- GRU: 72 Konfigurationen (dropout × dense_units × lr × batch × epochs)
+- GRU: 48 Konfigurationen (dropout × dense_units × lr × batch × epochs)
+- Informer: 64 Konfigurationen (d_model × n_heads × dropout × lr × batch × epochs)
 - Resume-Support für unterbrochene Durchläufe
 - Ergebnisse in `results/tuning/{MODEL}/{INDEX}/`
 
@@ -275,7 +356,7 @@ Selbes Interface wie LSTM/GRU für Vergleichbarkeit.
 
 ## Callbacks
 
-Alle Modelle verwenden:
+**TensorFlow-Modelle (LSTM, CNN, GRU):**
 
 1. **EarlyStopping**: Stoppt Training wenn Val Loss nicht mehr sinkt
    - Monitor: val_loss
@@ -286,6 +367,12 @@ Alle Modelle verwenden:
    - Factor: 0.5
    - Patience: 5 Epochen
    - Min LR: 1e-6
+
+**PyTorch-Modell (Informer):**
+
+1. **EarlyStopping**: Manuell implementiert mit Patience-Counter
+   - Patience: 10 Epochen
+   - Restore best weights via state_dict
 
 ## Datenfluss
 
@@ -303,9 +390,9 @@ preprocessedData/*.csv
            ↓
     [Sequences L=1..60]
            ↓
-    +--LSTM--+--GRU--+
-    |        |       |
-    +--CNN---+-------+
+    +--LSTM--+--GRU------+
+    |        |           |
+    +--CNN---+--Informer-+
            ↓
       [Predictions]
            ↓
@@ -318,3 +405,4 @@ preprocessedData/*.csv
 - Hochreiter, S., & Schmidhuber, J. (1997). Long short-term memory. *Neural computation*, 9(8), 1735-1780.
 - Cho, K. et al. (2014). Learning Phrase Representations using RNN Encoder-Decoder. *arXiv:1406.1078*.
 - LeCun, Y., Bengio, Y., & Hinton, G. (2015). Deep learning. *Nature*, 521(7553), 436-444.
+- Zhou, H. et al. (2021). Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting. *AAAI 2021* (Best Paper).

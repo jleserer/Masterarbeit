@@ -144,11 +144,13 @@ class GRUModel:
         val_loss, val_mae = self.model.evaluate(self.X_val, self.y_val, verbose=0)
         test_loss, test_mae = self.model.evaluate(self.X_test, self.y_test, verbose=0)
 
-        print(f"\nTraining   Loss: {train_loss:.6f}, MAE: {train_mae:.6f}")
-        print(f"Validation Loss: {val_loss:.6f}, MAE: {val_mae:.6f}")
-        print(f"Test       Loss: {test_loss:.6f}, MAE: {test_mae:.6f}")
+        train_rmse, val_rmse, test_rmse = np.sqrt(train_loss), np.sqrt(val_loss), np.sqrt(test_loss)
 
-        return test_loss, test_mae
+        print(f"\nTraining   Loss: {train_loss:.6f}, MAE: {train_mae:.6f}, RMSE: {train_rmse:.6f}")
+        print(f"Validation Loss: {val_loss:.6f}, MAE: {val_mae:.6f}, RMSE: {val_rmse:.6f}")
+        print(f"Test       Loss: {test_loss:.6f}, MAE: {test_mae:.6f}, RMSE: {test_rmse:.6f}")
+
+        return test_loss, test_mae, test_rmse
 
     def predict(self):
         """Generate predictions."""

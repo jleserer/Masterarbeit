@@ -1,0 +1,21 @@
+{
+  "config_name": "d0.2_u16_lr0.005_b32_e50",
+  "config": {
+    "name": "d0.2_u16_lr0.005_b32_e50",
+    "dropout": 0.2,
+    "dense_units": 16,
+    "lr": 0.005,
+    "batch": 32,
+    "epochs": 50
+  },
+  "metrics": {
+    "train_loss": 0.00012865924509242177,
+    "train_mae": 0.008060770109295845,
+    "val_loss": 7.294597889995202e-05,
+    "val_mae": 0.006210741586983204,
+    "test_loss": 0.00010133939213119447,
+    "test_mae": 0.006674977485090494
+  },
+  "training_time": 377.5216553211212,
+  "epochs_trained": 50
+}

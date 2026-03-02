@@ -1,16 +1,15 @@
 """
 Data Preparation Module
 ========================
-Loads stock data, computes percentage returns, and splits according to
+Loads stock data, computes log returns, and splits according to
 Goodfellow, Bengio, Courville (2016):
 - Training: 65%
 - Validation: 15%
 - Test: 20%
 
-Uses percentage returns r(t) = (price(t) - price(t-1)) / price(t-1) instead of
-absolute prices. Returns are approximately stationary, eliminating the domain shift
-that occurs when MinMaxScaler is fitted on training data only (e.g. SP500 training
-prices 242-1565 but test prices 2234-6905).
+Uses log returns r(t) = ln(P(t) / P(t-1)) instead of absolute prices.
+Log returns are stationary, time-additive, and symmetric, eliminating the
+domain shift that occurs when MinMaxScaler is fitted on training data only.
 """
 
 import os
@@ -23,8 +22,8 @@ class DataPreparator:
     Prepares and splits stock market data for ML/DL models.
     Uses Goodfellow 65%-15%-20% split for Train-Val-Test.
 
-    Computes percentage returns from Close prices. Returns are stationary
-    and have a similar distribution across all splits, avoiding domain shift.
+    Computes log returns from Close prices. Log returns are stationary,
+    time-additive, and have a similar distribution across all splits.
     """
 
     def __init__(self, data_path, target_columns=None, start_date=None):
@@ -62,9 +61,9 @@ class DataPreparator:
         selected_data = selected_data.dropna()
         print(f"Selected data shape after cleaning: {selected_data.shape}")
 
-        # Compute percentage returns: r(t) = (price(t) - price(t-1)) / price(t-1)
+        # Compute log returns: r(t) = ln(P(t) / P(t-1))
         prices = selected_data.values  # (N, n_features)
-        returns = (prices[1:] - prices[:-1]) / prices[:-1]  # (N-1, n_features)
+        returns = np.log(prices[1:] / prices[:-1])  # (N-1, n_features)
         base_prices = prices[:-1]  # price at t-1 for each return, aligned by index
 
         # Sequential split on returns (no shuffling)
@@ -97,7 +96,7 @@ class DataPreparator:
         return self.target_columns
 
     def inverse_transform(self, predicted_returns, split='test', lookback=0):
-        """Convert predicted returns back to original price scale.
+        """Convert predicted log returns back to original price scale.
 
         After create_sequences(data, L), the k-th target is data[L+k].
         The corresponding base price (price at t-1) is base_prices[L+k].
@@ -109,7 +108,7 @@ class DataPreparator:
 
         Returns:
             Predicted prices as array matching input shape.
-            price(t) = base_price(t-1) * (1 + predicted_return(t))
+            price(t) = base_price(t-1) * exp(predicted_log_return(t))
         """
         base_map = {
             'train': self.train_base_prices,
@@ -123,7 +122,7 @@ class DataPreparator:
         n = len(flat)
 
         relevant_base = base[lookback:lookback + n, 0]  # Close price column
-        predicted_prices = relevant_base * (1 + flat)
+        predicted_prices = relevant_base * np.exp(flat)
 
         if was_2d:
             return predicted_prices.reshape(-1, 1)

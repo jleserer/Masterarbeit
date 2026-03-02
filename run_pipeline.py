@@ -5,7 +5,7 @@ Fuehrt fuer jeden der 8 Indizes ein eigenes Hyperparameter-Tuning durch,
 findet die beste Konfiguration pro Index und nutzt diese fuer den Lookback Sweep.
 
 Schritte:
-  1. Hyperparameter-Tuning: 8 Indizes × 192 Configs = 1536 Tasks parallel
+  1. Hyperparameter-Tuning: 8 Indizes × 208 Configs = 1664 Tasks parallel
   2. Ergebnisse sammeln: Beste Konfiguration pro Index ermitteln
   3. Lookback Sweep: 8 Indizes × 60 L-Werte = 480 Tasks parallel
      (jeder Index nutzt seine eigene beste Konfiguration)
@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import time
 import argparse
+import math
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
@@ -68,6 +69,7 @@ def clean_results(full=False):
             dirs_to_clean.append(TUNING_RESULTS_DIR / 'LSTM' / index_name)
             dirs_to_clean.append(TUNING_RESULTS_DIR / 'CNN'  / index_name)
             dirs_to_clean.append(TUNING_RESULTS_DIR / 'GRU'  / index_name)
+            dirs_to_clean.append(TUNING_RESULTS_DIR / 'INFORMER' / index_name)
 
     print("=" * 70)
     print("SCHRITT 0: Alte Ergebnisse loeschen")
@@ -135,7 +137,7 @@ def generate_all_config_names():
 
     lstm_configs = []
     for dropout, dense, lr, batch, epochs in itertools.product(
-        [0.2, 0.4], [16, 32, 64], [0.001, 0.005], [8, 16, 32], [50, 100]
+        [0.2, 0.4], [16, 32], [0.001, 0.005], [8, 16, 32], [50, 100]
     ):
         lstm_configs.append(('lstm', f"d{dropout}_u{dense}_lr{lr}_b{batch}_e{epochs}"))
 
@@ -147,11 +149,17 @@ def generate_all_config_names():
 
     gru_configs = []
     for dropout, dense, lr, batch, epochs in itertools.product(
-        [0.2, 0.4], [16, 32, 64], [0.001, 0.005], [8, 16, 32], [50, 100]
+        [0.2, 0.4], [16, 32], [0.001, 0.005], [8, 16, 32], [50, 100]
     ):
         gru_configs.append(('gru', f"d{dropout}_u{dense}_lr{lr}_b{batch}_e{epochs}"))
 
-    return lstm_configs + cnn_configs + gru_configs
+    informer_configs = []
+    for d_model, n_heads, dropout, lr, batch, epochs in itertools.product(
+        [32, 64], [4, 8], [0.05, 0.1], [0.0001, 0.001], [16, 32], [50, 100]
+    ):
+        informer_configs.append(('informer', f"dm{d_model}_h{n_heads}_d{dropout}_lr{lr}_b{batch}_e{epochs}"))
+
+    return lstm_configs + cnn_configs + gru_configs + informer_configs
 
 
 def get_completed_configs():
@@ -161,7 +169,7 @@ def get_completed_configs():
     under results/tuning/{MODEL}/{INDEX}/.
     """
     completed = set()
-    for model_type in ['LSTM', 'CNN', 'GRU']:
+    for model_type in ['LSTM', 'CNN', 'GRU', 'INFORMER']:
         for index_name in ALL_INDICES:
             model_base = TUNING_RESULTS_DIR / model_type / index_name
             if model_base.exists():
@@ -172,7 +180,7 @@ def get_completed_configs():
 
 
 def run_parallel_tuning(max_workers, tf_threads):
-    """Run all 960 hyperparameter configs in parallel (8 indices × 120 configs)."""
+    """Run all hyperparameter configs in parallel (8 indices × 240 configs)."""
     all_configs = generate_all_config_names()
     total_tasks = len(ALL_INDICES) * len(all_configs)
 
@@ -249,7 +257,7 @@ def collect_results_and_find_best():
         print(f"\n  --- {index_name} ---")
         index_best = {}
 
-        for model_type, model_dir_name in [('lstm', 'LSTM'), ('cnn', 'CNN'), ('gru', 'GRU')]:
+        for model_type, model_dir_name in [('lstm', 'LSTM'), ('cnn', 'CNN'), ('gru', 'GRU'), ('informer', 'INFORMER')]:
             model_base = TUNING_RESULTS_DIR / model_dir_name / index_name
             if not model_base.exists():
                 print(f"    WARNUNG: {model_base} nicht gefunden!")
@@ -278,9 +286,11 @@ def collect_results_and_find_best():
                     'config': best['config'],
                     'metrics': best['metrics'],
                 }
+                rmse = best['metrics'].get('test_rmse', math.sqrt(best['metrics']['test_loss']))
                 print(f"    Best {model_dir_name}: {best['config_name']}"
                       f"  (Val Loss: {best['metrics']['val_loss']:.6f},"
-                      f" Test MAE: {best['metrics']['test_mae']:.6f})")
+                      f" Test MAE: {best['metrics']['test_mae']:.6f},"
+                      f" RMSE: {rmse:.6f})")
 
         best_configs[index_name] = index_best
 
@@ -433,17 +443,19 @@ def run_cross_index_comparison():
         'lstm_configs': {},
         'cnn_configs': {},
         'gru_configs': {},
+        'informer_configs': {},
         'lstm_sweep_results': {},
         'cnn_sweep_results': {},
         'gru_sweep_results': {},
+        'informer_sweep_results': {},
     }
 
     # --- Hyperparameter Comparison ---
-    print("\n" + "=" * 90)
+    print("\n" + "=" * 100)
     print("BESTE LSTM-KONFIGURATIONEN PRO INDEX")
-    print("=" * 90)
-    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s}")
-    print("-" * 90)
+    print("=" * 100)
+    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s} {'Test RMSE':>10s}")
+    print("-" * 100)
 
     for index_name in ALL_INDICES:
         if index_name not in best_configs:
@@ -451,20 +463,22 @@ def run_cross_index_comparison():
         idx_best = best_configs[index_name]
         if 'best_lstm' in idx_best:
             b = idx_best['best_lstm']
+            rmse = b['metrics'].get('test_rmse', math.sqrt(b['metrics']['test_loss']))
             print(f"{index_name:12s} {b['config_name']:35s} "
-                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f}")
+                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f} {rmse:10.6f}")
             comparison['lstm_configs'][index_name] = {
                 'config_name': b['config_name'],
                 'config': b['config'],
                 'val_loss': b['metrics']['val_loss'],
                 'test_mae': b['metrics']['test_mae'],
+                'test_rmse': rmse,
             }
 
-    print("\n" + "=" * 90)
+    print("\n" + "=" * 100)
     print("BESTE CNN-KONFIGURATIONEN PRO INDEX")
-    print("=" * 90)
-    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s}")
-    print("-" * 90)
+    print("=" * 100)
+    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s} {'Test RMSE':>10s}")
+    print("-" * 100)
 
     for index_name in ALL_INDICES:
         if index_name not in best_configs:
@@ -472,20 +486,22 @@ def run_cross_index_comparison():
         idx_best = best_configs[index_name]
         if 'best_cnn' in idx_best:
             b = idx_best['best_cnn']
+            rmse = b['metrics'].get('test_rmse', math.sqrt(b['metrics']['test_loss']))
             print(f"{index_name:12s} {b['config_name']:35s} "
-                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f}")
+                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f} {rmse:10.6f}")
             comparison['cnn_configs'][index_name] = {
                 'config_name': b['config_name'],
                 'config': b['config'],
                 'val_loss': b['metrics']['val_loss'],
                 'test_mae': b['metrics']['test_mae'],
+                'test_rmse': rmse,
             }
 
-    print("\n" + "=" * 90)
+    print("\n" + "=" * 100)
     print("BESTE GRU-KONFIGURATIONEN PRO INDEX")
-    print("=" * 90)
-    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s}")
-    print("-" * 90)
+    print("=" * 100)
+    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s} {'Test RMSE':>10s}")
+    print("-" * 100)
 
     for index_name in ALL_INDICES:
         if index_name not in best_configs:
@@ -493,13 +509,38 @@ def run_cross_index_comparison():
         idx_best = best_configs[index_name]
         if 'best_gru' in idx_best:
             b = idx_best['best_gru']
+            rmse = b['metrics'].get('test_rmse', math.sqrt(b['metrics']['test_loss']))
             print(f"{index_name:12s} {b['config_name']:35s} "
-                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f}")
+                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f} {rmse:10.6f}")
             comparison['gru_configs'][index_name] = {
                 'config_name': b['config_name'],
                 'config': b['config'],
                 'val_loss': b['metrics']['val_loss'],
                 'test_mae': b['metrics']['test_mae'],
+                'test_rmse': rmse,
+            }
+
+    print("\n" + "=" * 100)
+    print("BESTE INFORMER-KONFIGURATIONEN PRO INDEX")
+    print("=" * 100)
+    print(f"{'Index':12s} {'Config':35s} {'Val Loss':>10s} {'Test MAE':>10s} {'Test RMSE':>10s}")
+    print("-" * 100)
+
+    for index_name in ALL_INDICES:
+        if index_name not in best_configs:
+            continue
+        idx_best = best_configs[index_name]
+        if 'best_informer' in idx_best:
+            b = idx_best['best_informer']
+            rmse = b['metrics'].get('test_rmse', math.sqrt(b['metrics']['test_loss']))
+            print(f"{index_name:12s} {b['config_name']:35s} "
+                  f"{b['metrics']['val_loss']:10.6f} {b['metrics']['test_mae']:10.6f} {rmse:10.6f}")
+            comparison['informer_configs'][index_name] = {
+                'config_name': b['config_name'],
+                'config': b['config'],
+                'val_loss': b['metrics']['val_loss'],
+                'test_mae': b['metrics']['test_mae'],
+                'test_rmse': rmse,
             }
 
     # --- Analyze Config Similarity ---
@@ -552,14 +593,33 @@ def run_cross_index_comparison():
         for val, indices in sorted(values.items(), key=lambda x: -len(x[1])):
             print(f"    {val}: {len(indices)}x ({', '.join(indices)})")
 
+    # Informer parameter frequency
+    informer_params = {'d_model': {}, 'n_heads': {}, 'dropout': {}, 'lr': {}, 'batch': {}, 'epochs': {}}
+    for idx, data in comparison['informer_configs'].items():
+        cfg = data['config']
+        for param in informer_params:
+            val = cfg.get(param)
+            if val is not None:
+                informer_params[param][val] = informer_params[param].get(val, [])
+                informer_params[param][val].append(idx)
+
+    print("\nInformer - Haeufigkeit der besten Parameter:")
+    for param, values in informer_params.items():
+        print(f"  {param}:")
+        for val, indices in sorted(values.items(), key=lambda x: -len(x[1])):
+            print(f"    {val}: {len(indices)}x ({', '.join(indices)})")
+
     # --- Sweep Results Comparison ---
     print("\n" + "=" * 90)
     print("LOOKBACK SWEEP: Bestes L pro Index")
     print("=" * 90)
 
     sweep_base = RESULTS_DIR / 'lookback_sweep'
-    print(f"\n{'Index':12s} {'Best LSTM L':>12s} {'LSTM MAE':>10s} {'Best CNN L':>12s} {'CNN MAE':>10s} {'Best GRU L':>12s} {'GRU MAE':>10s}")
-    print("-" * 82)
+    print(f"\n{'Index':12s} {'LSTM L':>7s} {'MAE':>10s} {'RMSE':>10s} "
+          f"{'CNN L':>7s} {'MAE':>10s} {'RMSE':>10s} "
+          f"{'GRU L':>7s} {'MAE':>10s} {'RMSE':>10s} "
+          f"{'Inf L':>7s} {'MAE':>10s} {'RMSE':>10s}")
+    print("-" * 130)
 
     for index_name in ALL_INDICES:
         results_file = sweep_base / index_name / 'lookback_evaluation_results.json'
@@ -569,18 +629,28 @@ def run_cross_index_comparison():
 
             lstm_l = sweep_res.get('best_l_lstm', {}).get('l_value', '?')
             lstm_mae = sweep_res.get('best_l_lstm', {}).get('mae', float('nan'))
+            lstm_rmse = sweep_res.get('best_l_lstm', {}).get('rmse', math.sqrt(lstm_mae) if not math.isnan(lstm_mae) else float('nan'))
             cnn_l = sweep_res.get('best_l_cnn', {}).get('l_value', '?')
             cnn_mae = sweep_res.get('best_l_cnn', {}).get('mae', float('nan'))
+            cnn_rmse = sweep_res.get('best_l_cnn', {}).get('rmse', math.sqrt(cnn_mae) if not math.isnan(cnn_mae) else float('nan'))
             gru_l = sweep_res.get('best_l_gru', {}).get('l_value', '?')
             gru_mae = sweep_res.get('best_l_gru', {}).get('mae', float('nan'))
+            gru_rmse = sweep_res.get('best_l_gru', {}).get('rmse', math.sqrt(gru_mae) if not math.isnan(gru_mae) else float('nan'))
+            inf_l = sweep_res.get('best_l_informer', {}).get('l_value', '?')
+            inf_mae = sweep_res.get('best_l_informer', {}).get('mae', float('nan'))
+            inf_rmse = sweep_res.get('best_l_informer', {}).get('rmse', float('nan'))
 
-            print(f"{index_name:12s} {str(lstm_l):>12s} {lstm_mae:10.6f} {str(cnn_l):>12s} {cnn_mae:10.6f} {str(gru_l):>12s} {gru_mae:10.6f}")
+            print(f"{index_name:12s} {str(lstm_l):>7s} {lstm_mae:10.6f} {lstm_rmse:10.6f} "
+                  f"{str(cnn_l):>7s} {cnn_mae:10.6f} {cnn_rmse:10.6f} "
+                  f"{str(gru_l):>7s} {gru_mae:10.6f} {gru_rmse:10.6f} "
+                  f"{str(inf_l):>7s} {inf_mae:10.6f} {inf_rmse:10.6f}")
 
-            comparison['lstm_sweep_results'][index_name] = {'best_L': lstm_l, 'mae': lstm_mae}
-            comparison['cnn_sweep_results'][index_name] = {'best_L': cnn_l, 'mae': cnn_mae}
-            comparison['gru_sweep_results'][index_name] = {'best_L': gru_l, 'mae': gru_mae}
+            comparison['lstm_sweep_results'][index_name] = {'best_L': lstm_l, 'mae': lstm_mae, 'rmse': lstm_rmse}
+            comparison['cnn_sweep_results'][index_name] = {'best_L': cnn_l, 'mae': cnn_mae, 'rmse': cnn_rmse}
+            comparison['gru_sweep_results'][index_name] = {'best_L': gru_l, 'mae': gru_mae, 'rmse': gru_rmse}
+            comparison['informer_sweep_results'][index_name] = {'best_L': inf_l, 'mae': inf_mae, 'rmse': inf_rmse}
         else:
-            print(f"{index_name:12s} {'(missing)':>12s} {'':>10s} {'(missing)':>12s} {'':>10s} {'(missing)':>12s}")
+            print(f"{index_name:12s} {'?':>7s} {'':>10s} {'':>10s} {'?':>7s} {'':>10s} {'':>10s} {'?':>7s} {'':>10s} {'':>10s} {'?':>7s}")
 
     # --- Config Deviation Analysis ---
     print("\n" + "=" * 90)
@@ -604,6 +674,12 @@ def run_cross_index_comparison():
     print(f"\n  GRU: {len(unique_gru)} verschiedene Konfigurationen aus {len(comparison['gru_configs'])} Indizes")
     for cfg_name in sorted(unique_gru):
         indices_with = [idx for idx, d in comparison['gru_configs'].items() if d['config_name'] == cfg_name]
+        print(f"    {cfg_name}: {', '.join(indices_with)}")
+
+    unique_informer = set(d['config_name'] for d in comparison['informer_configs'].values())
+    print(f"\n  Informer: {len(unique_informer)} verschiedene Konfigurationen aus {len(comparison['informer_configs'])} Indizes")
+    for cfg_name in sorted(unique_informer):
+        indices_with = [idx for idx, d in comparison['informer_configs'].items() if d['config_name'] == cfg_name]
         print(f"    {cfg_name}: {', '.join(indices_with)}")
 
     # Save comparison
@@ -641,7 +717,7 @@ def main():
     print(f"Workers:       {args.workers}")
     print(f"TF Threads/W:  {tf_threads}")
     print(f"Indizes:       {len(ALL_INDICES)}")
-    print(f"Tuning Tasks:  {len(ALL_INDICES)} × 192 = {len(ALL_INDICES) * 192}")
+    print(f"Tuning Tasks:  {len(ALL_INDICES)} × 208 = {len(ALL_INDICES) * 208}")
     print(f"Sweep Tasks:   {len(ALL_INDICES)} × 60  = {len(ALL_INDICES) * 60}")
     print()
 

@@ -1,7 +1,7 @@
 """
 Lookback Window Sweep Analysis (L=1..60)
 ==========================================
-Parameter sweep analysis of LSTM, CNN and GRU models across lookback window sizes L = 1..60.
+Parameter sweep analysis of LSTM, CNN, GRU and Informer models across lookback window sizes L = 1..60.
 Uses BEST configurations from hyperparameter tuning.
 
 Generates:
@@ -60,6 +60,16 @@ BEST_GRU_CONFIG = {
     'dense_units': 16,
     'lr': 0.001,
     'batch': 16,
+    'epochs': 50
+}
+
+BEST_INFORMER_CONFIG = {
+    'name': 'dm64_h8_d0.05_lr0.0001_b32_e50',
+    'd_model': 64,
+    'n_heads': 8,
+    'dropout': 0.05,
+    'lr': 0.0001,
+    'batch': 32,
     'epochs': 50
 }
 
@@ -157,6 +167,23 @@ def train_and_evaluate(model, X_train, y_train, X_test, y_test, config):
     return test_mae, test_loss
 
 
+def build_informer_sweep_model(lookback_window, n_features, config):
+    """Build Informer model for sweep (PyTorch)."""
+    from informer_model import build_informer
+    informer_config = {**config, 'e_layers': 2, 'd_layers': 1, 'factor': 5}
+    return build_informer(lookback_window, n_features, informer_config)
+
+
+def train_and_evaluate_informer(model, X_train, y_train, X_test, y_test, config, lookback_window):
+    """Train and evaluate Informer model. Returns (test_mae, test_loss)."""
+    from informer_model import train_informer, evaluate_informer
+
+    train_informer(model, X_train, y_train, config, lookback_window, verbose=0)
+    test_loss, test_mae = evaluate_informer(model, X_test, y_test, lookback_window)
+
+    return test_mae, test_loss
+
+
 def evaluate_lookback_windows(data_path, output_dir):
     """Evaluate both models for different lookback windows L=1..60."""
     print("=" * 70)
@@ -164,9 +191,10 @@ def evaluate_lookback_windows(data_path, output_dir):
     print("=" * 70)
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Testing L = {LOOKBACK_WINDOWS[0]} to {LOOKBACK_WINDOWS[-1]}")
-    print(f"\nBest LSTM Config:  {BEST_LSTM_CONFIG['name']}")
-    print(f"Best CNN Config:   {BEST_CNN_CONFIG['name']}")
-    print(f"Best GRU Config:   {BEST_GRU_CONFIG['name']}")
+    print(f"\nBest LSTM Config:     {BEST_LSTM_CONFIG['name']}")
+    print(f"Best CNN Config:      {BEST_CNN_CONFIG['name']}")
+    print(f"Best GRU Config:      {BEST_GRU_CONFIG['name']}")
+    print(f"Best Informer Config: {BEST_INFORMER_CONFIG['name']}")
     print()
 
     # Load and prepare data once
@@ -179,9 +207,15 @@ def evaluate_lookback_windows(data_path, output_dir):
         'lstm_mae': [],
         'cnn_mae': [],
         'gru_mae': [],
+        'informer_mae': [],
         'lstm_loss': [],
         'cnn_loss': [],
-        'gru_loss': []
+        'gru_loss': [],
+        'informer_loss': [],
+        'lstm_rmse': [],
+        'cnn_rmse': [],
+        'gru_rmse': [],
+        'informer_rmse': []
     }
 
     # Evaluate each lookback window
@@ -207,6 +241,7 @@ def evaluate_lookback_windows(data_path, output_dir):
             )
             results['lstm_mae'].append(lstm_mae)
             results['lstm_loss'].append(lstm_loss)
+            results['lstm_rmse'].append(np.sqrt(lstm_loss))
 
             # CNN
             cnn_model = build_cnn_model(L, n_features, BEST_CNN_CONFIG)
@@ -216,6 +251,7 @@ def evaluate_lookback_windows(data_path, output_dir):
             )
             results['cnn_mae'].append(cnn_mae)
             results['cnn_loss'].append(cnn_loss)
+            results['cnn_rmse'].append(np.sqrt(cnn_loss))
 
             # GRU
             gru_model = build_gru_model(L, n_features, BEST_GRU_CONFIG)
@@ -225,21 +261,42 @@ def evaluate_lookback_windows(data_path, output_dir):
             )
             results['gru_mae'].append(gru_mae)
             results['gru_loss'].append(gru_loss)
+            results['gru_rmse'].append(np.sqrt(gru_loss))
 
-            # Clear models to free memory
+            # Clear TF models to free memory
             del lstm_model, cnn_model, gru_model
             tf.keras.backend.clear_session()
 
-            print(f"LSTM MAE: {lstm_mae:.6f}, CNN MAE: {cnn_mae:.6f}, GRU MAE: {gru_mae:.6f}")
+            # Informer (PyTorch)
+            import torch
+            torch.manual_seed(42)
+            informer_model = build_informer_sweep_model(L, n_features, BEST_INFORMER_CONFIG)
+            informer_mae, informer_loss = train_and_evaluate_informer(
+                informer_model, X_train, y_train, X_test, y_test,
+                BEST_INFORMER_CONFIG, L
+            )
+            results['informer_mae'].append(informer_mae)
+            results['informer_loss'].append(informer_loss)
+            results['informer_rmse'].append(np.sqrt(informer_loss))
+            del informer_model
+
+            print(f"LSTM MAE: {lstm_mae:.6f}, CNN MAE: {cnn_mae:.6f}, "
+                  f"GRU MAE: {gru_mae:.6f}, Informer MAE: {informer_mae:.6f}")
 
         except Exception as e:
             print(f"ERROR: {e}")
             results['lstm_mae'].append(np.nan)
             results['cnn_mae'].append(np.nan)
             results['gru_mae'].append(np.nan)
+            results['informer_mae'].append(np.nan)
             results['lstm_loss'].append(np.nan)
             results['cnn_loss'].append(np.nan)
             results['gru_loss'].append(np.nan)
+            results['informer_loss'].append(np.nan)
+            results['lstm_rmse'].append(np.nan)
+            results['cnn_rmse'].append(np.nan)
+            results['gru_rmse'].append(np.nan)
+            results['informer_rmse'].append(np.nan)
 
     print("\n")
     return results, preparator, train_data, val_data, test_data
@@ -339,11 +396,14 @@ def plot_mae_vs_lookback(results, output_dir):
             'r-s', linewidth=2.5, markersize=6, label='CNN', alpha=0.8)
     ax.plot(results['lookback_windows'], results['gru_mae'],
             'g-^', linewidth=2.5, markersize=6, label='GRU', alpha=0.8)
+    ax.plot(results['lookback_windows'], results['informer_mae'],
+            'm-D', linewidth=2.5, markersize=6, label='Informer', alpha=0.8)
 
     # Find and mark best L values
     best_lstm_idx = np.nanargmin(results['lstm_mae'])
     best_cnn_idx = np.nanargmin(results['cnn_mae'])
     best_gru_idx = np.nanargmin(results['gru_mae'])
+    best_informer_idx = np.nanargmin(results['informer_mae'])
 
     ax.plot(results['lookback_windows'][best_lstm_idx], results['lstm_mae'][best_lstm_idx],
             'bo', markersize=12, markeredgewidth=2, markerfacecolor='lightblue',
@@ -354,6 +414,9 @@ def plot_mae_vs_lookback(results, output_dir):
     ax.plot(results['lookback_windows'][best_gru_idx], results['gru_mae'][best_gru_idx],
             'g^', markersize=12, markeredgewidth=2, markerfacecolor='lightgreen',
             markeredgecolor='darkgreen', zorder=5)
+    ax.plot(results['lookback_windows'][best_informer_idx], results['informer_mae'][best_informer_idx],
+            'mD', markersize=12, markeredgewidth=2, markerfacecolor='plum',
+            markeredgecolor='purple', zorder=5)
 
     ax.set_xlabel('Lookback Window (L)', fontsize=13, fontweight='bold')
     ax.set_ylabel('Test MAE', fontsize=13, fontweight='bold')
@@ -390,13 +453,23 @@ def plot_mae_vs_lookback(results, output_dir):
                 bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgreen', alpha=0.7),
                 arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0', color='darkgreen', lw=1.5))
 
+    best_informer_l = results['lookback_windows'][best_informer_idx]
+    best_informer_mae = results['informer_mae'][best_informer_idx]
+
+    ax.annotate(f'Best Informer\nL={best_informer_l}, MAE={best_informer_mae:.6f}',
+                xy=(best_informer_l, best_informer_mae), xytext=(-40, -40),
+                textcoords='offset points', fontsize=10, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='plum', alpha=0.7),
+                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0', color='purple', lw=1.5))
+
     plt.tight_layout()
     plot_path = os.path.join(output_dir, '01_mae_vs_lookback_window.png')
     plt.savefig(plot_path, dpi=150, bbox_inches='tight')
     print(f"Saved: {plot_path}")
     plt.close()
 
-    return best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae, best_gru_l, best_gru_mae
+    return (best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
+            best_gru_l, best_gru_mae, best_informer_l, best_informer_mae)
 
 
 def plot_predictions_vs_actual(predictions_data, output_dir, model_type='LSTM'):
@@ -496,31 +569,55 @@ def plot_predictions_vs_actual(predictions_data, output_dir, model_type='LSTM'):
 
 
 def save_results(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
-                 best_gru_l, best_gru_mae, output_dir):
+                 best_gru_l, best_gru_mae, best_informer_l, best_informer_mae, output_dir):
     """Save comprehensive results to JSON file."""
+    def _safe_list(key):
+        return [float(x) if not np.isnan(x) else None for x in results.get(key, [])]
+
+    # Compute RMSE from loss if not already in results
+    def _rmse_list(loss_key, rmse_key):
+        if rmse_key in results and results[rmse_key]:
+            return _safe_list(rmse_key)
+        return [float(np.sqrt(x)) if not np.isnan(x) else None for x in results.get(loss_key, [])]
+
     results_json = {
         'timestamp': datetime.now().isoformat(),
         'best_lstm_config': BEST_LSTM_CONFIG,
         'best_cnn_config': BEST_CNN_CONFIG,
         'best_gru_config': BEST_GRU_CONFIG,
+        'best_informer_config': BEST_INFORMER_CONFIG,
         'lookback_windows': results['lookback_windows'],
-        'lstm_mae': [float(x) if not np.isnan(x) else None for x in results['lstm_mae']],
-        'cnn_mae': [float(x) if not np.isnan(x) else None for x in results['cnn_mae']],
-        'gru_mae': [float(x) if not np.isnan(x) else None for x in results['gru_mae']],
-        'lstm_loss': [float(x) if not np.isnan(x) else None for x in results['lstm_loss']],
-        'cnn_loss': [float(x) if not np.isnan(x) else None for x in results['cnn_loss']],
-        'gru_loss': [float(x) if not np.isnan(x) else None for x in results['gru_loss']],
+        'lstm_mae': _safe_list('lstm_mae'),
+        'cnn_mae': _safe_list('cnn_mae'),
+        'gru_mae': _safe_list('gru_mae'),
+        'informer_mae': _safe_list('informer_mae'),
+        'lstm_loss': _safe_list('lstm_loss'),
+        'cnn_loss': _safe_list('cnn_loss'),
+        'gru_loss': _safe_list('gru_loss'),
+        'informer_loss': _safe_list('informer_loss'),
+        'lstm_rmse': _rmse_list('lstm_loss', 'lstm_rmse'),
+        'cnn_rmse': _rmse_list('cnn_loss', 'cnn_rmse'),
+        'gru_rmse': _rmse_list('gru_loss', 'gru_rmse'),
+        'informer_rmse': _rmse_list('informer_loss', 'informer_rmse'),
         'best_l_lstm': {
             'l_value': int(best_lstm_l),
-            'mae': float(best_lstm_mae)
+            'mae': float(best_lstm_mae),
+            'rmse': float(np.sqrt(results['lstm_loss'][np.nanargmin(results['lstm_mae'])]))
         },
         'best_l_cnn': {
             'l_value': int(best_cnn_l),
-            'mae': float(best_cnn_mae)
+            'mae': float(best_cnn_mae),
+            'rmse': float(np.sqrt(results['cnn_loss'][np.nanargmin(results['cnn_mae'])]))
         },
         'best_l_gru': {
             'l_value': int(best_gru_l),
-            'mae': float(best_gru_mae)
+            'mae': float(best_gru_mae),
+            'rmse': float(np.sqrt(results['gru_loss'][np.nanargmin(results['gru_mae'])]))
+        },
+        'best_l_informer': {
+            'l_value': int(best_informer_l),
+            'mae': float(best_informer_mae),
+            'rmse': float(np.sqrt(results['informer_loss'][np.nanargmin(results['informer_mae'])]))
         }
     }
 
@@ -532,41 +629,60 @@ def save_results(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
 
 
 def print_summary(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
-                  best_gru_l, best_gru_mae):
+                  best_gru_l, best_gru_mae, best_informer_l, best_informer_mae):
     """Print summary of results."""
     print(f"\n{'='*70}")
     print("EVALUATION SUMMARY")
     print(f"{'='*70}")
 
+    best_lstm_rmse = np.sqrt(results['lstm_loss'][np.nanargmin(results['lstm_mae'])])
+    best_cnn_rmse = np.sqrt(results['cnn_loss'][np.nanargmin(results['cnn_mae'])])
+    best_gru_rmse = np.sqrt(results['gru_loss'][np.nanargmin(results['gru_mae'])])
+    best_informer_rmse = np.sqrt(results['informer_loss'][np.nanargmin(results['informer_mae'])])
+
     print(f"\nBest LSTM L: {best_lstm_l}")
-    print(f"  Test MAE: {best_lstm_mae:.6f}")
+    print(f"  Test MAE: {best_lstm_mae:.6f}, RMSE: {best_lstm_rmse:.6f}")
     print(f"  Config: {BEST_LSTM_CONFIG['name']}")
 
     print(f"\nBest CNN L: {best_cnn_l}")
-    print(f"  Test MAE: {best_cnn_mae:.6f}")
+    print(f"  Test MAE: {best_cnn_mae:.6f}, RMSE: {best_cnn_rmse:.6f}")
     print(f"  Config: {BEST_CNN_CONFIG['name']}")
 
     print(f"\nBest GRU L: {best_gru_l}")
-    print(f"  Test MAE: {best_gru_mae:.6f}")
+    print(f"  Test MAE: {best_gru_mae:.6f}, RMSE: {best_gru_rmse:.6f}")
     print(f"  Config: {BEST_GRU_CONFIG['name']}")
 
+    print(f"\nBest Informer L: {best_informer_l}")
+    print(f"  Test MAE: {best_informer_mae:.6f}, RMSE: {best_informer_rmse:.6f}")
+    print(f"  Config: {BEST_INFORMER_CONFIG['name']}")
+
     print(f"\nTop 5 LSTM Results:")
-    print("-" * 50)
+    print("-" * 60)
     lstm_mae_sorted = sorted(enumerate(results['lstm_mae']), key=lambda x: x[1])
-    for i, (_, mae) in enumerate(lstm_mae_sorted[:5], 1):
-        print(f"  {i}. L={results['lookback_windows'][_]:2d}, MAE={mae:.6f}")
+    for i, (idx, mae) in enumerate(lstm_mae_sorted[:5], 1):
+        rmse = np.sqrt(results['lstm_loss'][idx])
+        print(f"  {i}. L={results['lookback_windows'][idx]:2d}, MAE={mae:.6f}, RMSE={rmse:.6f}")
 
     print(f"\nTop 5 CNN Results:")
-    print("-" * 50)
+    print("-" * 60)
     cnn_mae_sorted = sorted(enumerate(results['cnn_mae']), key=lambda x: x[1])
-    for i, (_, mae) in enumerate(cnn_mae_sorted[:5], 1):
-        print(f"  {i}. L={results['lookback_windows'][_]:2d}, MAE={mae:.6f}")
+    for i, (idx, mae) in enumerate(cnn_mae_sorted[:5], 1):
+        rmse = np.sqrt(results['cnn_loss'][idx])
+        print(f"  {i}. L={results['lookback_windows'][idx]:2d}, MAE={mae:.6f}, RMSE={rmse:.6f}")
 
     print(f"\nTop 5 GRU Results:")
-    print("-" * 50)
+    print("-" * 60)
     gru_mae_sorted = sorted(enumerate(results['gru_mae']), key=lambda x: x[1])
-    for i, (_, mae) in enumerate(gru_mae_sorted[:5], 1):
-        print(f"  {i}. L={results['lookback_windows'][_]:2d}, MAE={mae:.6f}")
+    for i, (idx, mae) in enumerate(gru_mae_sorted[:5], 1):
+        rmse = np.sqrt(results['gru_loss'][idx])
+        print(f"  {i}. L={results['lookback_windows'][idx]:2d}, MAE={mae:.6f}, RMSE={rmse:.6f}")
+
+    print(f"\nTop 5 Informer Results:")
+    print("-" * 60)
+    informer_mae_sorted = sorted(enumerate(results['informer_mae']), key=lambda x: x[1])
+    for i, (idx, mae) in enumerate(informer_mae_sorted[:5], 1):
+        rmse = np.sqrt(results['informer_loss'][idx])
+        print(f"  {i}. L={results['lookback_windows'][idx]:2d}, MAE={mae:.6f}, RMSE={rmse:.6f}")
 
 
 def run_single_lookback(data_path, output_dir, L):
@@ -582,8 +698,10 @@ def run_single_lookback(data_path, output_dir, L):
     preparator = DataPreparator(data_path)
     train_data, _, test_data = preparator.load_and_prepare()
 
-    result = {'L': L, 'lstm_mae': None, 'lstm_loss': None, 'cnn_mae': None, 'cnn_loss': None,
-              'gru_mae': None, 'gru_loss': None}
+    result = {'L': L, 'lstm_mae': None, 'lstm_loss': None, 'lstm_rmse': None,
+              'cnn_mae': None, 'cnn_loss': None, 'cnn_rmse': None,
+              'gru_mae': None, 'gru_loss': None, 'gru_rmse': None,
+              'informer_mae': None, 'informer_loss': None, 'informer_rmse': None}
 
     try:
         X_train, y_train = create_sequences(train_data, L)
@@ -600,6 +718,7 @@ def run_single_lookback(data_path, output_dir, L):
         )
         result['lstm_mae'] = float(lstm_mae)
         result['lstm_loss'] = float(lstm_loss)
+        result['lstm_rmse'] = float(np.sqrt(lstm_loss))
         del lstm_model
         tf.keras.backend.clear_session()
 
@@ -610,6 +729,7 @@ def run_single_lookback(data_path, output_dir, L):
         )
         result['cnn_mae'] = float(cnn_mae)
         result['cnn_loss'] = float(cnn_loss)
+        result['cnn_rmse'] = float(np.sqrt(cnn_loss))
         del cnn_model
         tf.keras.backend.clear_session()
 
@@ -620,8 +740,22 @@ def run_single_lookback(data_path, output_dir, L):
         )
         result['gru_mae'] = float(gru_mae)
         result['gru_loss'] = float(gru_loss)
+        result['gru_rmse'] = float(np.sqrt(gru_loss))
         del gru_model
         tf.keras.backend.clear_session()
+
+        # Informer (PyTorch)
+        import torch
+        torch.manual_seed(42)
+        informer_model = build_informer_sweep_model(L, n_features, BEST_INFORMER_CONFIG)
+        informer_mae, informer_loss = train_and_evaluate_informer(
+            informer_model, X_train, y_train, X_test, y_test,
+            BEST_INFORMER_CONFIG, L
+        )
+        result['informer_mae'] = float(informer_mae)
+        result['informer_loss'] = float(informer_loss)
+        result['informer_rmse'] = float(np.sqrt(informer_loss))
+        del informer_model
 
     except Exception as e:
         print(f"ERROR L={L}: {e}")
@@ -631,7 +765,10 @@ def run_single_lookback(data_path, output_dir, L):
     with open(result_path, 'w') as f:
         json.dump(result, f, indent=2)
 
-    print(f"  L={L:2d}: LSTM MAE={result['lstm_mae']}, CNN MAE={result['cnn_mae']}, GRU MAE={result['gru_mae']}")
+    print(f"  L={L:2d}: LSTM MAE={result['lstm_mae']}, RMSE={result['lstm_rmse']}, "
+          f"CNN MAE={result['cnn_mae']}, RMSE={result['cnn_rmse']}, "
+          f"GRU MAE={result['gru_mae']}, RMSE={result['gru_rmse']}, "
+          f"Inf MAE={result['informer_mae']}, RMSE={result['informer_rmse']}")
 
 
 def collect_and_plot(data_path, output_dir):
@@ -648,7 +785,13 @@ def collect_and_plot(data_path, output_dir):
         'gru_mae': [],
         'lstm_loss': [],
         'cnn_loss': [],
-        'gru_loss': []
+        'gru_loss': [],
+        'lstm_rmse': [],
+        'cnn_rmse': [],
+        'gru_rmse': [],
+        'informer_mae': [],
+        'informer_loss': [],
+        'informer_rmse': []
     }
 
     for L in LOOKBACK_WINDOWS:
@@ -659,23 +802,40 @@ def collect_and_plot(data_path, output_dir):
             results['lstm_mae'].append(r['lstm_mae'] if r['lstm_mae'] is not None else np.nan)
             results['cnn_mae'].append(r['cnn_mae'] if r['cnn_mae'] is not None else np.nan)
             results['gru_mae'].append(r.get('gru_mae') if r.get('gru_mae') is not None else np.nan)
+            results['informer_mae'].append(r.get('informer_mae') if r.get('informer_mae') is not None else np.nan)
             results['lstm_loss'].append(r['lstm_loss'] if r['lstm_loss'] is not None else np.nan)
             results['cnn_loss'].append(r['cnn_loss'] if r['cnn_loss'] is not None else np.nan)
             results['gru_loss'].append(r.get('gru_loss') if r.get('gru_loss') is not None else np.nan)
+            results['informer_loss'].append(r.get('informer_loss') if r.get('informer_loss') is not None else np.nan)
+            # RMSE: read from JSON or compute from loss
+            for model in ['lstm', 'cnn', 'gru', 'informer']:
+                rmse_val = r.get(f'{model}_rmse')
+                if rmse_val is not None:
+                    results[f'{model}_rmse'].append(rmse_val)
+                else:
+                    loss_val = r.get(f'{model}_loss')
+                    results[f'{model}_rmse'].append(np.sqrt(loss_val) if loss_val is not None else np.nan)
         else:
             print(f"  WARNING: Missing L={L}")
             results['lstm_mae'].append(np.nan)
             results['cnn_mae'].append(np.nan)
             results['gru_mae'].append(np.nan)
+            results['informer_mae'].append(np.nan)
             results['lstm_loss'].append(np.nan)
             results['cnn_loss'].append(np.nan)
             results['gru_loss'].append(np.nan)
+            results['informer_loss'].append(np.nan)
+            results['lstm_rmse'].append(np.nan)
+            results['cnn_rmse'].append(np.nan)
+            results['gru_rmse'].append(np.nan)
+            results['informer_rmse'].append(np.nan)
 
     valid_count = sum(1 for x in results['lstm_mae'] if not np.isnan(x))
     print(f"  Collected {valid_count}/{len(LOOKBACK_WINDOWS)} L-values")
 
     # Plot MAE vs Lookback Window
-    best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae, best_gru_l, best_gru_mae = plot_mae_vs_lookback(results, output_dir)
+    (best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
+     best_gru_l, best_gru_mae, best_informer_l, best_informer_mae) = plot_mae_vs_lookback(results, output_dir)
 
     # Determine best L values (top 3)
     lstm_mae_sorted = sorted(
@@ -690,21 +850,28 @@ def collect_and_plot(data_path, output_dir):
         [(i, m) for i, m in enumerate(results['gru_mae']) if not np.isnan(m)],
         key=lambda x: x[1]
     )
+    informer_mae_sorted = sorted(
+        [(i, m) for i, m in enumerate(results['informer_mae']) if not np.isnan(m)],
+        key=lambda x: x[1]
+    )
 
     best_lstm_L_values = [results['lookback_windows'][idx] for idx, _ in lstm_mae_sorted[:3]]
     best_cnn_L_values  = [results['lookback_windows'][idx] for idx, _ in cnn_mae_sorted[:3]]
     best_gru_L_values  = [results['lookback_windows'][idx] for idx, _ in gru_mae_sorted[:3]]
+    best_informer_L_values = [results['lookback_windows'][idx] for idx, _ in informer_mae_sorted[:3]]
 
-    print(f"\nBest 3 L values for LSTM: {best_lstm_L_values}")
-    print(f"Best 3 L values for CNN:  {best_cnn_L_values}")
-    print(f"Best 3 L values for GRU:  {best_gru_L_values}")
+    print(f"\nBest 3 L values for LSTM:     {best_lstm_L_values}")
+    print(f"Best 3 L values for CNN:      {best_cnn_L_values}")
+    print(f"Best 3 L values for GRU:      {best_gru_L_values}")
+    print(f"Best 3 L values for Informer: {best_informer_L_values}")
 
     # Load data for predictions
     preparator = DataPreparator(data_path)
     train_data, val_data, test_data = preparator.load_and_prepare()
 
     # Generate predictions for best L values (union of all best L values)
-    all_best_L = sorted(set(best_lstm_L_values + best_cnn_L_values + best_gru_L_values))
+    all_best_L = sorted(set(best_lstm_L_values + best_cnn_L_values +
+                            best_gru_L_values + best_informer_L_values))
     all_predictions = generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
                                                       all_best_L, output_dir)
 
@@ -716,11 +883,11 @@ def collect_and_plot(data_path, output_dir):
 
     # Save results
     save_results(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
-                 best_gru_l, best_gru_mae, output_dir)
+                 best_gru_l, best_gru_mae, best_informer_l, best_informer_mae, output_dir)
 
     # Print summary
     print_summary(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
-                  best_gru_l, best_gru_mae)
+                  best_gru_l, best_gru_mae, best_informer_l, best_informer_mae)
 
     # Clean up individual L files
     for L in LOOKBACK_WINDOWS:
@@ -778,9 +945,14 @@ if __name__ == "__main__":
                     BEST_GRU_CONFIG.clear()
                     BEST_GRU_CONFIG['name'] = idx_best['best_gru']['config_name']
                     BEST_GRU_CONFIG.update({k: v for k, v in cfg.items() if k != 'name'})
+                if 'best_informer' in idx_best:
+                    cfg = idx_best['best_informer']['config']
+                    BEST_INFORMER_CONFIG.clear()
+                    BEST_INFORMER_CONFIG['name'] = idx_best['best_informer']['config_name']
+                    BEST_INFORMER_CONFIG.update({k: v for k, v in cfg.items() if k != 'name'})
                 print(f"Loaded per-index configs for {args.index}: "
                       f"LSTM={BEST_LSTM_CONFIG['name']}, CNN={BEST_CNN_CONFIG['name']}, "
-                      f"GRU={BEST_GRU_CONFIG['name']}")
+                      f"GRU={BEST_GRU_CONFIG['name']}, Informer={BEST_INFORMER_CONFIG['name']}")
         except Exception as e:
             print(f"Warning: Could not load per-index configs: {e}. Using defaults.")
 
@@ -835,23 +1007,28 @@ if __name__ == "__main__":
         results, preparator, train_data, val_data, test_data = evaluate_lookback_windows(data_path, output_dir)
 
         # Plot MAE vs Lookback Window
-        best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae, best_gru_l, best_gru_mae = plot_mae_vs_lookback(results, output_dir)
+        (best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
+     best_gru_l, best_gru_mae, best_informer_l, best_informer_mae) = plot_mae_vs_lookback(results, output_dir)
 
         # Determine best L values (top 3)
         lstm_mae_sorted = sorted(enumerate(results['lstm_mae']), key=lambda x: x[1])
         cnn_mae_sorted  = sorted(enumerate(results['cnn_mae']),  key=lambda x: x[1])
         gru_mae_sorted  = sorted(enumerate(results['gru_mae']),  key=lambda x: x[1])
+        informer_mae_sorted = sorted(enumerate(results['informer_mae']), key=lambda x: x[1])
 
         best_lstm_L_values = [results['lookback_windows'][idx] for idx, _ in lstm_mae_sorted[:3]]
         best_cnn_L_values  = [results['lookback_windows'][idx] for idx, _ in cnn_mae_sorted[:3]]
         best_gru_L_values  = [results['lookback_windows'][idx] for idx, _ in gru_mae_sorted[:3]]
+        best_informer_L_values = [results['lookback_windows'][idx] for idx, _ in informer_mae_sorted[:3]]
 
-        print(f"\nBest 3 L values for LSTM: {best_lstm_L_values}")
-        print(f"Best 3 L values for CNN:  {best_cnn_L_values}")
-        print(f"Best 3 L values for GRU:  {best_gru_L_values}")
+        print(f"\nBest 3 L values for LSTM:     {best_lstm_L_values}")
+        print(f"Best 3 L values for CNN:      {best_cnn_L_values}")
+        print(f"Best 3 L values for GRU:      {best_gru_L_values}")
+        print(f"Best 3 L values for Informer: {best_informer_L_values}")
 
         # Generate predictions for best L values (union of all)
-        all_best_L = sorted(set(best_lstm_L_values + best_cnn_L_values + best_gru_L_values))
+        all_best_L = sorted(set(best_lstm_L_values + best_cnn_L_values +
+                                best_gru_L_values + best_informer_L_values))
         all_predictions = generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
                                                           all_best_L, output_dir)
 
@@ -863,11 +1040,11 @@ if __name__ == "__main__":
 
         # Save results
         save_results(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
-                     best_gru_l, best_gru_mae, output_dir)
+                     best_gru_l, best_gru_mae, best_informer_l, best_informer_mae, output_dir)
 
         # Print summary
         print_summary(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
-                      best_gru_l, best_gru_mae)
+                      best_gru_l, best_gru_mae, best_informer_l, best_informer_mae)
 
         print(f"\n{'='*70}")
         print(f"EVALUATION COMPLETE: {index_name}")
