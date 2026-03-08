@@ -1,0 +1,635 @@
+{
+  "timestamp": "2026-03-06T22:24:24.256925",
+  "lstm_configs": {
+    "SP500": {
+      "config_name": "d0.4_u64_lr0.001_b32_e50",
+      "config": {
+        "name": "d0.4_u64_lr0.001_b32_e50",
+        "dropout": 0.4,
+        "dense_units": 64,
+        "lr": 0.001,
+        "batch": 32,
+        "epochs": 50
+      },
+      "val_loss": 6.137284799478948e-05,
+      "test_mae": 0.008156456984579563,
+      "test_rmse": 0.012554012217628748
+    },
+    "DAX": {
+      "config_name": "d0.2_u32_lr0.001_b16_e50",
+      "config": {
+        "name": "d0.2_u32_lr0.001_b16_e50",
+        "dropout": 0.2,
+        "dense_units": 32,
+        "lr": 0.001,
+        "batch": 16,
+        "epochs": 50
+      },
+      "val_loss": 0.00012309695011936128,
+      "test_mae": 0.008216356858611107,
+      "test_rmse": 0.012192504703269925
+    },
+    "NASDAQ": {
+      "config_name": "d0.4_u64_lr0.001_b32_e100",
+      "config": {
+        "name": "d0.4_u64_lr0.001_b32_e100",
+        "dropout": 0.4,
+        "dense_units": 64,
+        "lr": 0.001,
+        "batch": 32,
+        "epochs": 100
+      },
+      "val_loss": 8.373035961994901e-05,
+      "test_mae": 0.01052740216255188,
+      "test_rmse": 0.015251900548529233
+    },
+    "FTSE100": {
+      "config_name": "d0.4_u64_lr0.005_b8_e100",
+      "config": {
+        "name": "d0.4_u64_lr0.005_b8_e100",
+        "dropout": 0.4,
+        "dense_units": 64,
+        "lr": 0.005,
+        "batch": 8,
+        "epochs": 100
+      },
+      "val_loss": 7.184979040175676e-05,
+      "test_mae": 0.006560684181749821,
+      "test_rmse": 0.010019147869191928
+    },
+    "HANG_SENG": {
+      "config_name": "d0.2_u64_lr0.001_b32_e100",
+      "config": {
+        "name": "d0.2_u64_lr0.001_b32_e100",
+        "dropout": 0.2,
+        "dense_units": 64,
+        "lr": 0.001,
+        "batch": 32,
+        "epochs": 100
+      },
+      "val_loss": 0.00010992011812049896,
+      "test_mae": 0.01081918366253376,
+      "test_rmse": 0.014958881890271733
+    },
+    "NIKKEI": {
+      "config_name": "d0.4_u64_lr0.005_b16_e100",
+      "config": {
+        "name": "d0.4_u64_lr0.005_b16_e100",
+        "dropout": 0.4,
+        "dense_units": 64,
+        "lr": 0.005,
+        "batch": 16,
+        "epochs": 100
+      },
+      "val_loss": 0.00019175877969246358,
+      "test_mae": 0.009317304007709026,
+      "test_rmse": 0.01333708345432448
+    },
+    "10Y_Bond": {
+      "config_name": "d0.2_u32_lr0.005_b16_e100",
+      "config": {
+        "name": "d0.2_u32_lr0.005_b16_e100",
+        "dropout": 0.2,
+        "dense_units": 32,
+        "lr": 0.005,
+        "batch": 16,
+        "epochs": 100
+      },
+      "val_loss": 0.00040122243808582425,
+      "test_mae": 0.02020750567317009,
+      "test_rmse": 0.03382133055271825
+    },
+    "30Y_Bond": {
+      "config_name": "d0.2_u64_lr0.001_b8_e100",
+      "config": {
+        "name": "d0.2_u64_lr0.001_b8_e100",
+        "dropout": 0.2,
+        "dense_units": 64,
+        "lr": 0.001,
+        "batch": 8,
+        "epochs": 100
+      },
+      "val_loss": 0.00021482582087628543,
+      "test_mae": 0.015068788081407547,
+      "test_rmse": 0.0234590731616647
+    }
+  },
+  "cnn_configs": {
+    "SP500": {
+      "config_name": "k5_p2_d0.2_b8_e50",
+      "config": {
+        "name": "k5_p2_d0.2_b8_e50",
+        "kernel": 5,
+        "pool": 2,
+        "dropout": 0.2,
+        "batch": 8,
+        "epochs": 50
+      },
+      "val_loss": 6.137676245998591e-05,
+      "test_mae": 0.008155246265232563,
+      "test_rmse": 0.01255407597041881
+    },
+    "DAX": {
+      "config_name": "k3_p4_d0.2_b8_e50",
+      "config": {
+        "name": "k3_p4_d0.2_b8_e50",
+        "kernel": 3,
+        "pool": 4,
+        "dropout": 0.2,
+        "batch": 8,
+        "epochs": 50
+      },
+      "val_loss": 0.00012310317833907902,
+      "test_mae": 0.008213979192078114,
+      "test_rmse": 0.012192911684476558
+    },
+    "NASDAQ": {
+      "config_name": "k5_p4_d0.2_b16_e100",
+      "config": {
+        "name": "k5_p4_d0.2_b16_e100",
+        "kernel": 5,
+        "pool": 4,
+        "dropout": 0.2,
+        "batch": 16,
+        "epochs": 100
+      },
+      "val_loss": 8.37351253721863e-05,
+      "test_mae": 0.0105369184166193,
+      "test_rmse": 0.015251990711189293
+    },
+    "FTSE100": {
+      "config_name": "k5_p2_d0.4_b8_e50",
+      "config": {
+        "name": "k5_p2_d0.4_b8_e50",
+        "kernel": 5,
+        "pool": 2,
+        "dropout": 0.4,
+        "batch": 8,
+        "epochs": 50
+      },
+      "val_loss": 7.18506780685857e-05,
+      "test_mae": 0.006560083478689194,
+      "test_rmse": 0.01001928330555251
+    },
+    "HANG_SENG": {
+      "config_name": "k3_p4_d0.4_b16_e50",
+      "config": {
+        "name": "k3_p4_d0.4_b16_e50",
+        "kernel": 3,
+        "pool": 4,
+        "dropout": 0.4,
+        "batch": 16,
+        "epochs": 50
+      },
+      "val_loss": 0.00010992021270794794,
+      "test_mae": 0.0108187859877944,
+      "test_rmse": 0.014958621179124004
+    },
+    "NIKKEI": {
+      "config_name": "k5_p4_d0.2_b8_e50",
+      "config": {
+        "name": "k5_p4_d0.2_b8_e50",
+        "kernel": 5,
+        "pool": 4,
+        "dropout": 0.2,
+        "batch": 8,
+        "epochs": 50
+      },
+      "val_loss": 0.0001917360204970464,
+      "test_mae": 0.009314943104982376,
+      "test_rmse": 0.01333873689382443
+    },
+    "10Y_Bond": {
+      "config_name": "k3_p4_d0.4_b32_e100",
+      "config": {
+        "name": "k3_p4_d0.4_b32_e100",
+        "kernel": 3,
+        "pool": 4,
+        "dropout": 0.4,
+        "batch": 32,
+        "epochs": 100
+      },
+      "val_loss": 0.00040120669291354716,
+      "test_mae": 0.02021166682243347,
+      "test_rmse": 0.03382077293309485
+    },
+    "30Y_Bond": {
+      "config_name": "k5_p2_d0.4_b8_e100",
+      "config": {
+        "name": "k5_p2_d0.4_b8_e100",
+        "kernel": 5,
+        "pool": 2,
+        "dropout": 0.4,
+        "batch": 8,
+        "epochs": 100
+      },
+      "val_loss": 0.00021482617012225091,
+      "test_mae": 0.015068992972373962,
+      "test_rmse": 0.02345966369006452
+    }
+  },
+  "gru_configs": {
+    "SP500": {
+      "config_name": "d0.2_u32_lr0.001_b16_e100",
+      "config": {
+        "name": "d0.2_u32_lr0.001_b16_e100",
+        "dropout": 0.2,
+        "dense_units": 32,
+        "lr": 0.001,
+        "batch": 16,
+        "epochs": 100
+      },
+      "val_loss": 6.137206219136715e-05,
+      "test_mae": 0.008159613236784935,
+      "test_rmse": 0.012554201736337183
+    },
+    "DAX": {
+      "config_name": "d0.4_u32_lr0.005_b32_e100",
+      "config": {
+        "name": "d0.4_u32_lr0.005_b32_e100",
+        "dropout": 0.4,
+        "dense_units": 32,
+        "lr": 0.005,
+        "batch": 32,
+        "epochs": 100
+      },
+      "val_loss": 0.00012310841702856123,
+      "test_mae": 0.008213372901082039,
+      "test_rmse": 0.012193170665444411
+    },
+    "NASDAQ": {
+      "config_name": "d0.2_u32_lr0.001_b32_e100",
+      "config": {
+        "name": "d0.2_u32_lr0.001_b32_e100",
+        "dropout": 0.2,
+        "dense_units": 32,
+        "lr": 0.001,
+        "batch": 32,
+        "epochs": 100
+      },
+      "val_loss": 8.37332772789523e-05,
+      "test_mae": 0.010526571422815323,
+      "test_rmse": 0.01525200216037783
+    },
+    "FTSE100": {
+      "config_name": "d0.4_u64_lr0.001_b32_e50",
+      "config": {
+        "name": "d0.4_u64_lr0.001_b32_e50",
+        "dropout": 0.4,
+        "dense_units": 64,
+        "lr": 0.001,
+        "batch": 32,
+        "epochs": 50
+      },
+      "val_loss": 7.184920104919001e-05,
+      "test_mae": 0.006561801768839359,
+      "test_rmse": 0.010018953607408789
+    },
+    "HANG_SENG": {
+      "config_name": "d0.2_u32_lr0.001_b32_e50",
+      "config": {
+        "name": "d0.2_u32_lr0.001_b32_e50",
+        "dropout": 0.2,
+        "dense_units": 32,
+        "lr": 0.001,
+        "batch": 32,
+        "epochs": 50
+      },
+      "val_loss": 0.00010992069292115048,
+      "test_mae": 0.010819736868143082,
+      "test_rmse": 0.01495925106115804
+    },
+    "NIKKEI": {
+      "config_name": "d0.4_u16_lr0.005_b16_e50",
+      "config": {
+        "name": "d0.4_u16_lr0.005_b16_e50",
+        "dropout": 0.4,
+        "dense_units": 16,
+        "lr": 0.005,
+        "batch": 16,
+        "epochs": 50
+      },
+      "val_loss": 0.0001917361660161987,
+      "test_mae": 0.009314663708209991,
+      "test_rmse": 0.013339439448098527
+    },
+    "10Y_Bond": {
+      "config_name": "d0.4_u16_lr0.001_b8_e100",
+      "config": {
+        "name": "d0.4_u16_lr0.001_b8_e100",
+        "dropout": 0.4,
+        "dense_units": 16,
+        "lr": 0.001,
+        "batch": 8,
+        "epochs": 100
+      },
+      "val_loss": 0.0003986630472354591,
+      "test_mae": 0.020170802250504494,
+      "test_rmse": 0.0332897682661234
+    },
+    "30Y_Bond": {
+      "config_name": "d0.4_u32_lr0.001_b8_e100",
+      "config": {
+        "name": "d0.4_u32_lr0.001_b8_e100",
+        "dropout": 0.4,
+        "dense_units": 32,
+        "lr": 0.001,
+        "batch": 8,
+        "epochs": 100
+      },
+      "val_loss": 0.00021361454855650663,
+      "test_mae": 0.015064496546983719,
+      "test_rmse": 0.023465548312245024
+    }
+  },
+  "informer_configs": {
+    "SP500": {
+      "config_name": "dm32_h8_d0.1_lr0.001_b16_e100",
+      "config": {
+        "name": "dm32_h8_d0.1_lr0.001_b16_e100",
+        "d_model": 32,
+        "n_heads": 8,
+        "dropout": 0.1,
+        "lr": 0.001,
+        "batch": 16,
+        "epochs": 100
+      },
+      "val_loss": 6.156115705380216e-05,
+      "test_mae": 0.008162014186382294,
+      "test_rmse": 0.012588536811546414
+    },
+    "DAX": {
+      "config_name": "dm64_h4_d0.05_lr0.001_b32_e100",
+      "config": {
+        "name": "dm64_h4_d0.05_lr0.001_b32_e100",
+        "d_model": 64,
+        "n_heads": 4,
+        "dropout": 0.05,
+        "lr": 0.001,
+        "batch": 32,
+        "epochs": 100
+      },
+      "val_loss": 0.00012345635332167149,
+      "test_mae": 0.008220965974032879,
+      "test_rmse": 0.012231789753493642
+    },
+    "NASDAQ": {
+      "config_name": "dm64_h4_d0.05_lr0.001_b16_e100",
+      "config": {
+        "name": "dm64_h4_d0.05_lr0.001_b16_e100",
+        "d_model": 64,
+        "n_heads": 4,
+        "dropout": 0.05,
+        "lr": 0.001,
+        "batch": 16,
+        "epochs": 100
+      },
+      "val_loss": 8.401221566600725e-05,
+      "test_mae": 0.010533989407122135,
+      "test_rmse": 0.015280543079082807
+    },
+    "FTSE100": {
+      "config_name": "dm32_h8_d0.1_lr0.0001_b32_e100",
+      "config": {
+        "name": "dm32_h8_d0.1_lr0.0001_b32_e100",
+        "d_model": 32,
+        "n_heads": 8,
+        "dropout": 0.1,
+        "lr": 0.0001,
+        "batch": 32,
+        "epochs": 100
+      },
+      "val_loss": 7.192249177023768e-05,
+      "test_mae": 0.006567725446075201,
+      "test_rmse": 0.01007258587246368
+    },
+    "HANG_SENG": {
+      "config_name": "dm64_h4_d0.05_lr0.0001_b16_e100",
+      "config": {
+        "name": "dm64_h4_d0.05_lr0.0001_b16_e100",
+        "d_model": 64,
+        "n_heads": 4,
+        "dropout": 0.05,
+        "lr": 0.0001,
+        "batch": 16,
+        "epochs": 100
+      },
+      "val_loss": 0.00011027768778149039,
+      "test_mae": 0.01081814430654049,
+      "test_rmse": 0.014990240607275895
+    },
+    "NIKKEI": {
+      "config_name": "dm64_h8_d0.05_lr0.0001_b16_e100",
+      "config": {
+        "name": "dm64_h8_d0.05_lr0.0001_b16_e100",
+        "d_model": 64,
+        "n_heads": 8,
+        "dropout": 0.05,
+        "lr": 0.0001,
+        "batch": 16,
+        "epochs": 100
+      },
+      "val_loss": 0.00019237450032960624,
+      "test_mae": 0.00931450817734003,
+      "test_rmse": 0.013363904312428664
+    },
+    "10Y_Bond": {
+      "config_name": "dm32_h8_d0.1_lr0.001_b16_e50",
+      "config": {
+        "name": "dm32_h8_d0.1_lr0.001_b16_e50",
+        "d_model": 32,
+        "n_heads": 8,
+        "dropout": 0.1,
+        "lr": 0.001,
+        "batch": 16,
+        "epochs": 50
+      },
+      "val_loss": 0.00039868371095508337,
+      "test_mae": 0.020176518708467484,
+      "test_rmse": 0.033292714383622656
+    },
+    "30Y_Bond": {
+      "config_name": "dm32_h4_d0.1_lr0.0001_b32_e100",
+      "config": {
+        "name": "dm32_h4_d0.1_lr0.0001_b32_e100",
+        "d_model": 32,
+        "n_heads": 4,
+        "dropout": 0.1,
+        "lr": 0.0001,
+        "batch": 32,
+        "epochs": 100
+      },
+      "val_loss": 0.0002136032417183742,
+      "test_mae": 0.015069399029016495,
+      "test_rmse": 0.023466957227069363
+    }
+  },
+  "lstm_sweep_results": {
+    "SP500": {
+      "best_L": 60,
+      "mae": 0.00844379048794508,
+      "rmse": 0.012729521314406937
+    },
+    "DAX": {
+      "best_L": 2,
+      "mae": 0.008186617866158485,
+      "rmse": 0.01215601512647098
+    },
+    "NASDAQ": {
+      "best_L": 7,
+      "mae": 0.010392219759523869,
+      "rmse": 0.015140076426372058
+    },
+    "FTSE100": {
+      "best_L": 26,
+      "mae": 0.006543053779751062,
+      "rmse": 0.08088914500568703
+    },
+    "HANG_SENG": {
+      "best_L": 7,
+      "mae": 0.01073552668094635,
+      "rmse": 0.014871799716645694
+    },
+    "NIKKEI": {
+      "best_L": 3,
+      "mae": 0.00926368497312069,
+      "rmse": 0.013239860775095836
+    },
+    "10Y_Bond": {
+      "best_L": 3,
+      "mae": 0.019853079691529274,
+      "rmse": 0.03286735017530853
+    },
+    "30Y_Bond": {
+      "best_L": 2,
+      "mae": 0.01486409641802311,
+      "rmse": 0.023191936348878343
+    }
+  },
+  "cnn_sweep_results": {
+    "SP500": {
+      "best_L": 60,
+      "mae": 0.008588554337620735,
+      "rmse": 0.012817544595514794
+    },
+    "DAX": {
+      "best_L": 2,
+      "mae": 0.008185832761228085,
+      "rmse": 0.01216057580466265
+    },
+    "NASDAQ": {
+      "best_L": 2,
+      "mae": 0.010379601269960403,
+      "rmse": 0.015125265999367005
+    },
+    "FTSE100": {
+      "best_L": 32,
+      "mae": 0.0065291207283735275,
+      "rmse": 0.08080297474953213
+    },
+    "HANG_SENG": {
+      "best_L": 11,
+      "mae": 0.010745154693722725,
+      "rmse": 0.014880793728197343
+    },
+    "NIKKEI": {
+      "best_L": 8,
+      "mae": 0.00924204383045435,
+      "rmse": 0.013243222491572375
+    },
+    "10Y_Bond": {
+      "best_L": 4,
+      "mae": 0.019860273227095604,
+      "rmse": 0.03287536645739882
+    },
+    "30Y_Bond": {
+      "best_L": 2,
+      "mae": 0.01486392505466938,
+      "rmse": 0.02319172552276762
+    }
+  },
+  "gru_sweep_results": {
+    "SP500": {
+      "best_L": 60,
+      "mae": 0.00860583409667015,
+      "rmse": 0.012828390753231706
+    },
+    "DAX": {
+      "best_L": 5,
+      "mae": 0.008183625526726246,
+      "rmse": 0.012156050440747182
+    },
+    "NASDAQ": {
+      "best_L": 7,
+      "mae": 0.01039221789687872,
+      "rmse": 0.015140074504067872
+    },
+    "FTSE100": {
+      "best_L": "?",
+      "mae": NaN,
+      "rmse": NaN
+    },
+    "HANG_SENG": {
+      "best_L": 7,
+      "mae": 0.010735529474914074,
+      "rmse": 0.014871800695136194
+    },
+    "NIKKEI": {
+      "best_L": 3,
+      "mae": 0.00926368497312069,
+      "rmse": 0.01323986132464523
+    },
+    "10Y_Bond": {
+      "best_L": 2,
+      "mae": 0.019845619797706604,
+      "rmse": 0.03285906976645584
+    },
+    "30Y_Bond": {
+      "best_L": 2,
+      "mae": 0.01486392505466938,
+      "rmse": 0.02319172552276762
+    }
+  },
+  "informer_sweep_results": {
+    "SP500": {
+      "best_L": 60,
+      "mae": 0.008212525397539139,
+      "rmse": 0.012605301598738624
+    },
+    "DAX": {
+      "best_L": 6,
+      "mae": 0.008186529390513897,
+      "rmse": 0.01215877112724053
+    },
+    "NASDAQ": {
+      "best_L": 5,
+      "mae": 0.010386684909462929,
+      "rmse": 0.015125238098639119
+    },
+    "FTSE100": {
+      "best_L": "?",
+      "mae": NaN,
+      "rmse": NaN
+    },
+    "HANG_SENG": {
+      "best_L": 2,
+      "mae": 0.01073229406028986,
+      "rmse": 0.014859829427731758
+    },
+    "NIKKEI": {
+      "best_L": 4,
+      "mae": 0.009225075133144855,
+      "rmse": 0.0132305140369227
+    },
+    "10Y_Bond": {
+      "best_L": 10,
+      "mae": 0.019853666424751282,
+      "rmse": 0.03288772969233211
+    },
+    "30Y_Bond": {
+      "best_L": 2,
+      "mae": 0.01486380398273468,
+      "rmse": 0.023191397985543965
+    }
+  }
+}

@@ -17,11 +17,14 @@ Framework: PyTorch
 """
 
 import os
+import sys
 import math
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import torch
 import torch.nn as nn
@@ -404,7 +407,7 @@ class InformerModel:
     BATCH_SIZE = 32
     EPOCHS = 100
 
-    def __init__(self, data_path, output_dir=os.path.join('..', 'results', 'tuning', 'INFORMER', 'SP500')):
+    def __init__(self, data_path, output_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'parameter_tuning', 'results', 'INFORMER', 'SP500')):
         self.data_path = data_path
         self.output_dir = output_dir
         self.model = None
@@ -632,7 +635,7 @@ class InformerModel:
 
 
 # =============================================================================
-# HELPER FUNCTIONS (for use by hyperparameter_tuning.py and sweep)
+# HELPER FUNCTIONS (for use by parameter_tuning.py and sweep)
 # =============================================================================
 
 def build_informer(lookback_window, n_features, config):

@@ -11,14 +11,14 @@ Schritte:
      (jeder Index nutzt seine eigene beste Konfiguration)
   4. Cross-Index Vergleich: Konfigurationen und Ergebnisse vergleichen
 
-Hardware-Empfehlung (AMD Ryzen AI Max+ 395, 16C/32T, 48GB RAM):
+Parallelisierung je nach Hardware (AMD Ryzen AI Max+ 395, 16C/32T, 48GB RAM):
   --workers 8   → 8 parallele Trainings, je ~4 TF-Threads (default)
   --workers 12  → aggressiver, voll ausgelastet
   --workers 16  → maximal
 
 Aufruf:
   python run_pipeline.py                     # Alles parallel (8 Workers)
-  python run_pipeline.py --workers 16        # Mehr Parallelitaet
+  python run_pipeline.py --workers 16        # Mehr Parallelität
   python run_pipeline.py --skip-tuning       # Tuning ueberspringen
   python run_pipeline.py --clean-only        # Nur aufraeumen
 """
@@ -37,9 +37,13 @@ from datetime import datetime
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent
-MODELS_DIR   = PROJECT_ROOT / 'models'
-RESULTS_DIR  = PROJECT_ROOT / 'results'
-TUNING_RESULTS_DIR = RESULTS_DIR / 'tuning'
+TUNING_DIR   = PROJECT_ROOT / 'parameter_tuning'
+SWEEP_DIR    = PROJECT_ROOT / 'lookback_window_sweep'
+COMPARE_DIR  = PROJECT_ROOT / 'comparison'
+TUNING_RESULTS_DIR = TUNING_DIR / 'results'
+SWEEP_RESULTS_DIR  = SWEEP_DIR / 'results'
+COMPARE_RESULTS_DIR = COMPARE_DIR / 'results'
+LOGS_DIR     = PROJECT_ROOT / 'results' / 'logs'
 
 ALL_INDICES = ['SP500', 'DAX', 'NASDAQ', 'FTSE100', 'HANG_SENG', 'NIKKEI', '10Y_Bond', '30Y_Bond']
 
@@ -55,16 +59,15 @@ def clean_results(full=False):
     Use full=True (--clean-only) to delete everything including tuning.
     """
     dirs_to_clean = [
-        RESULTS_DIR / 'evaluation',
-        RESULTS_DIR / 'lookback_evaluation',
+        COMPARE_RESULTS_DIR / 'evaluation',
     ]
     files_to_clean = [
-        RESULTS_DIR / 'best_configurations.json',
+        TUNING_RESULTS_DIR / 'best_configurations.json',
     ]
 
     if full:
         # Also delete tuning + sweep results (fresh start)
-        dirs_to_clean.append(RESULTS_DIR / 'lookback_sweep')
+        dirs_to_clean.append(SWEEP_RESULTS_DIR)
         for index_name in ALL_INDICES:
             dirs_to_clean.append(TUNING_RESULTS_DIR / 'LSTM' / index_name)
             dirs_to_clean.append(TUNING_RESULTS_DIR / 'CNN'  / index_name)
@@ -96,7 +99,7 @@ def run_subprocess(cmd, cwd, env, log_file=None):
     """Run a subprocess. Returns (returncode, elapsed_seconds)."""
     start = time.time()
     if log_file:
-        log_dir = RESULTS_DIR / 'logs'
+        log_dir = LOGS_DIR
         log_dir.mkdir(parents=True, exist_ok=True)
         with open(log_dir / log_file, 'w', encoding='utf-8') as f:
             result = subprocess.run(cmd, cwd=str(cwd), env=env,
@@ -121,11 +124,11 @@ def make_env(tf_threads=4):
 def dispatch_single_config(args_tuple):
     """Worker function: train one hyperparameter config for one index."""
     index_name, model_type, config_name, tf_threads = args_tuple
-    cmd = [sys.executable, '-u', 'hyperparameter_tuning.py',
+    cmd = [sys.executable, '-u', str(TUNING_DIR / 'parameter_tuning.py'),
            '--model', model_type, '--config', config_name, '--index', index_name]
     env = make_env(tf_threads)
     log_name = f'tuning_{index_name}_{model_type}_{config_name}.log'
-    returncode, elapsed = run_subprocess(cmd, MODELS_DIR, env, log_name)
+    returncode, elapsed = run_subprocess(cmd, PROJECT_ROOT, env, log_name)
     status = 'OK' if returncode == 0 else 'FAIL'
     print(f"  [{status}] {index_name:10s} {model_type.upper():4s} {config_name} ({elapsed:.0f}s)")
     return (index_name, model_type, config_name, returncode, elapsed)
@@ -166,7 +169,7 @@ def get_completed_configs():
     """Check which (index, model, config) triples are already done.
 
     Checks for individual results.json files in per-config directories
-    under results/tuning/{MODEL}/{INDEX}/.
+    under parameter_tuning/results/{MODEL}/{INDEX}/.
     """
     completed = set()
     for model_type in ['LSTM', 'CNN', 'GRU', 'INFORMER']:
@@ -295,8 +298,8 @@ def collect_results_and_find_best():
         best_configs[index_name] = index_best
 
     # Save best_configurations.json
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    best_path = RESULTS_DIR / 'best_configurations.json'
+    TUNING_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    best_path = TUNING_RESULTS_DIR / 'best_configurations.json'
     with open(best_path, 'w') as f:
         json.dump(best_configs, f, indent=2)
     print(f"\n  Gespeichert: {best_path}")
@@ -311,12 +314,12 @@ def collect_results_and_find_best():
 def dispatch_single_lookback(args_tuple):
     """Worker: train LSTM+CNN for one (index, L) pair with per-index best config."""
     index_name, L, best_configs_path, tf_threads = args_tuple
-    cmd = [sys.executable, '-u', 'evaluate_lookback_window_sweep.py',
+    cmd = [sys.executable, '-u', str(SWEEP_DIR / 'lookback_window_sweep.py'),
            '--index', index_name, '--lookback', str(L),
            '--best-configs', str(best_configs_path)]
     env = make_env(tf_threads)
     log_name = f'sweep_{index_name}_L{L:02d}.log'
-    returncode, elapsed = run_subprocess(cmd, MODELS_DIR, env, log_name)
+    returncode, elapsed = run_subprocess(cmd, PROJECT_ROOT, env, log_name)
     status = 'OK' if returncode == 0 else 'FAIL'
     print(f"  [{status}] {index_name} L={L:2d} ({elapsed:.0f}s)")
     return (index_name, L, returncode, elapsed)
@@ -325,12 +328,12 @@ def dispatch_single_lookback(args_tuple):
 def dispatch_sweep_collect(args_tuple):
     """Worker: collect results and generate plots for one index."""
     index_name, best_configs_path, tf_threads = args_tuple
-    cmd = [sys.executable, '-u', 'evaluate_lookback_window_sweep.py',
+    cmd = [sys.executable, '-u', str(SWEEP_DIR / 'lookback_window_sweep.py'),
            '--index', index_name, '--collect',
            '--best-configs', str(best_configs_path)]
     env = make_env(tf_threads)
     log_name = f'sweep_{index_name}_collect.log'
-    returncode, elapsed = run_subprocess(cmd, MODELS_DIR, env, log_name)
+    returncode, elapsed = run_subprocess(cmd, PROJECT_ROOT, env, log_name)
     status = 'OK' if returncode == 0 else 'FAIL'
     print(f"  [{status}] Collect {index_name} ({elapsed:.0f}s)")
     return (index_name, returncode, elapsed)
@@ -339,9 +342,8 @@ def dispatch_sweep_collect(args_tuple):
 def get_completed_lookbacks():
     """Check which (index, L) pairs are already done (for resume after crash)."""
     completed = set()
-    sweep_base = RESULTS_DIR / 'lookback_sweep'
     for index_name in ALL_INDICES:
-        index_dir = sweep_base / index_name
+        index_dir = SWEEP_RESULTS_DIR / index_name
         if index_dir.exists():
             for f in index_dir.glob('L_*.json'):
                 try:
@@ -355,7 +357,7 @@ def get_completed_lookbacks():
 def run_parallel_sweep(max_workers, tf_threads):
     """Run lookback sweep: 480 individual (index, L) tasks in parallel, then collect."""
     total_tasks = len(ALL_INDICES) * 60  # 8 indices × 60 L-values
-    best_configs_path = RESULTS_DIR / 'best_configurations.json'
+    best_configs_path = TUNING_RESULTS_DIR / 'best_configurations.json'
 
     if not best_configs_path.exists():
         print("FEHLER: best_configurations.json nicht gefunden! Tuning zuerst ausfuehren.")
@@ -430,7 +432,7 @@ def run_cross_index_comparison():
     print("# SCHRITT 4: Cross-Index Vergleich")
     print("#" * 70)
 
-    best_path = RESULTS_DIR / 'best_configurations.json'
+    best_path = TUNING_RESULTS_DIR / 'best_configurations.json'
     if not best_path.exists():
         print("  FEHLER: best_configurations.json nicht gefunden!")
         return
@@ -614,7 +616,7 @@ def run_cross_index_comparison():
     print("LOOKBACK SWEEP: Bestes L pro Index")
     print("=" * 90)
 
-    sweep_base = RESULTS_DIR / 'lookback_sweep'
+    sweep_base = SWEEP_RESULTS_DIR
     print(f"\n{'Index':12s} {'LSTM L':>7s} {'MAE':>10s} {'RMSE':>10s} "
           f"{'CNN L':>7s} {'MAE':>10s} {'RMSE':>10s} "
           f"{'GRU L':>7s} {'MAE':>10s} {'RMSE':>10s} "
@@ -683,7 +685,8 @@ def run_cross_index_comparison():
         print(f"    {cfg_name}: {', '.join(indices_with)}")
 
     # Save comparison
-    comparison_path = RESULTS_DIR / 'cross_index_comparison.json'
+    COMPARE_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    comparison_path = COMPARE_RESULTS_DIR / 'cross_index_comparison.json'
     with open(comparison_path, 'w') as f:
         json.dump(comparison, f, indent=2)
     print(f"\n  Vergleich gespeichert: {comparison_path}")
@@ -748,8 +751,10 @@ def main():
     print("PIPELINE KOMPLETT ABGESCHLOSSEN")
     print("=" * 70)
     print(f"Gesamtdauer: {total_elapsed/60:.1f} min ({total_elapsed/3600:.1f}h)")
-    print(f"Ergebnisse:  {RESULTS_DIR}")
-    print(f"Logs:        {RESULTS_DIR / 'logs'}")
+    print(f"Tuning:      {TUNING_RESULTS_DIR}")
+    print(f"Sweep:       {SWEEP_RESULTS_DIR}")
+    print(f"Vergleich:   {COMPARE_RESULTS_DIR}")
+    print(f"Logs:        {LOGS_DIR}")
 
 
 if __name__ == "__main__":

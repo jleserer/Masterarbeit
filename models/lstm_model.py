@@ -8,34 +8,36 @@ Architecture & Hyperparameters (based on paper comparison):
   - Optimizer: Adam (learning rate 0.001)
   - Loss: MSE (for single-output regression)
   
-Loopback Window: L=60 (60 trading days history)
+Lookback Window: L=60 (60 trading days history)
 Target: Single-output (Close price only)
 """
 
 import os
+import sys
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from data_preparation import DataPreparator, create_sequences
 
 
 class LSTMModel:
     """LSTM-based stock price predictor."""
-    
+
     # Architecture Configuration
     LOOKBACK_WINDOW = 60  # L: number of previous time steps (60 days floating window)
     LSTM_UNITS = [128, 64]  # Two LSTM layers
-    DROPOUT_RATE = 0.2 #0,4
-    DENSE_UNITS = 32 #64, 16 
-    LEARNING_RATE = 0.001 #0,005
-    BATCH_SIZE = 32 #8 16 32 <- mit einer Konfig von den anderen Configs prüfen
-    EPOCHS = 100 #50 <- mit einer Konfig von den anderen Configs prüfen
+    DROPOUT_RATE = 0.2
+    DENSE_UNITS = 32
+    LEARNING_RATE = 0.001
+    BATCH_SIZE = 32
+    EPOCHS = 100
     
-    def __init__(self, data_path, output_dir=os.path.join('..', 'results', 'tuning', 'LSTM', 'SP500')):
+    def __init__(self, data_path, output_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'parameter_tuning', 'results', 'LSTM', 'SP500')):
         """
         Args:
             data_path: Path to CSV file
@@ -61,8 +63,8 @@ class LSTMModel:
         self.preparator = DataPreparator(self.data_path)
         train_data, val_data, test_data = self.preparator.load_and_prepare()
         
-        # Create sequences with loopback window
-        print(f"\nCreating sequences with Loopback Window L={self.LOOKBACK_WINDOW}...")
+        # Create sequences with lookback window
+        print(f"\nCreating sequences with Lookback Window L={self.LOOKBACK_WINDOW}...")
         self.X_train, self.y_train = create_sequences(train_data, self.LOOKBACK_WINDOW)
         self.X_val, self.y_val = create_sequences(val_data, self.LOOKBACK_WINDOW)
         self.X_test, self.y_test = create_sequences(test_data, self.LOOKBACK_WINDOW)
@@ -121,9 +123,6 @@ class LSTMModel:
         print("STEP 3: Train LSTM Model")
         print("=" * 70)
         
-        # With percentage returns, val data has a similar distribution to training data
-        # (no domain shift). EarlyStopping could be used but is kept disabled for
-        # consistency with the hyperparameter tuning results.
         self.history = self.model.fit(
             self.X_train, self.y_train,
             validation_data=(self.X_val, self.y_val),
@@ -234,5 +233,5 @@ if __name__ == "__main__":
         'SP500_historical_data.csv'
     )
     
-    lstm = LSTMModel(data_path, output_dir=os.path.join('..', 'results', 'tuning', 'LSTM', 'SP500'))
+    lstm = LSTMModel(data_path)
     lstm.run_full_pipeline()

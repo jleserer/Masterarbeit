@@ -1,408 +1,142 @@
-# Stock Price Prediction Models
+# Modell-Implementierungen
 
-Implementierung von LSTM, CNN, GRU und Informer Modellen zur Vorhersage von Aktienkursen basierend auf historischen Daten.
+Vier Deep Learning Modelle zur Vorhersage von Log-Returns auf Basis historischer Kursdaten.
 
-## Quick Start
+## Dateien
 
-```bash
-# LSTM trainieren
-python lstm_model.py
+| Datei | Framework | Beschreibung |
+|-------|-----------|-------------|
+| `lstm_model.py` | TensorFlow | LSTM mit 2 Recurrent-Layern (128, 64 Units) |
+| `cnn_model.py` | TensorFlow | CNN mit 3 Conv1D-Layern (64, 128, 256 Filter) |
+| `gru_model.py` | TensorFlow | GRU mit 2 Recurrent-Layern (128, 64 Units) |
+| `informer_model.py` | PyTorch | Informer mit ProbSparse Self-Attention |
 
-# CNN trainieren
-python cnn_model.py
+Alle Modelle implementieren dasselbe Interface: `prepare_data()`, `build_model()`, `train()`, `evaluate()`, `predict()`, `plot_results()`, `save_model()`, `run_full_pipeline()`.
 
-# GRU trainieren
-python gru_model.py
-
-# Informer trainieren (PyTorch)
-python informer_model.py
-
-# Alle vier vergleichen
-python model_comparison.py
-
-# Hyperparameter-Tuning (Grid Search)
-python hyperparameter_tuning.py
-
-# Lookback-Window-Sweep (L=1..60)
-python evaluate_lookback_window_sweep.py
-```
-
-## Projektstruktur
+## LSTM-Architektur
 
 ```
-models/
-├── data_preparation.py             ← Data loading & 65%-15%-20% Split (Goodfellow)
-├── lstm_model.py                   ← LSTM-Implementierung (128→64 Units, TensorFlow)
-├── cnn_model.py                    ← CNN-Implementierung (64→128→256 Filter, TensorFlow)
-├── gru_model.py                    ← GRU-Implementierung (128→64 Units, TensorFlow)
-├── informer_model.py               ← Informer-Implementierung (ProbSparse Attention, PyTorch)
-├── model_comparison.py             ← Training & Vergleich aller Modelle
-├── hyperparameter_tuning.py        ← Full Grid Search (LSTM: 48, CNN: 48, GRU: 48, Informer: 64 Configs)
-├── evaluate_lookback_window_sweep.py ← Lookback-Window-Sweep L=1..60
-└── README.md                       ← Dieses Dokument
-
-results/
-├── tuning/
-│   ├── LSTM/{INDEX}/               ← LSTM Tuning-Ergebnisse (48 Configs pro Index)
-│   ├── CNN/{INDEX}/                ← CNN Tuning-Ergebnisse (48 Configs pro Index)
-│   ├── GRU/{INDEX}/                ← GRU Tuning-Ergebnisse (48 Configs pro Index)
-│   └── INFORMER/{INDEX}/           ← Informer Tuning-Ergebnisse (64 Configs pro Index)
-├── lookback_sweep/{INDEX}/         ← Window-Sweep-Analyse pro Index
-│   ├── 01_mae_vs_lookback_window.png
-│   ├── 02_{MODEL}_predictions_vs_actual_timeseries.png
-│   ├── 03_{MODEL}_predictions_vs_actual_original_scale.png
-│   ├── 04_{MODEL}_scatter_predictions.png
-│   └── lookback_evaluation_results.json
-├── best_configurations.json        ← Beste Konfiguration pro Index
-└── cross_index_comparison.json     ← Cross-Index Vergleich
+Input (L, 1)
+    -> LSTM(128, return_sequences=True) -> Dropout
+    -> LSTM(64) -> Dropout
+    -> Dense(32, relu) -> Dropout
+    -> Dense(1, linear)
 ```
 
-## Überblick
+| Parameter | Default | Tuning-Bereich |
+|-----------|---------|----------------|
+| Lookback Window | 60 | 1..60 (Sweep) |
+| LSTM Units | 128, 64 | fest |
+| Dropout | 0.2 | {0.2, 0.4} |
+| Dense Units | 32 | {16, 32} |
+| Learning Rate | 0.001 | {0.001, 0.005} |
+| Batch Size | 32 | {8, 16, 32} |
+| Epochs | 100 | {50, 100} |
 
-Dieses Projekt implementiert vier Deep Learning Modelle:
-- **LSTM** (Long Short-Term Memory): Zur Erfassung von zeitlichen Abhängigkeiten (TensorFlow)
-- **CNN** (Convolutional Neural Network): Zur räumlichen Merkmalserkennung in Zeitreihen (TensorFlow)
-- **GRU** (Gated Recurrent Unit): Leichtgewichtige Alternative zu LSTM (TensorFlow)
-- **Informer** (Transformer-Variante): ProbSparse Self-Attention für effiziente Zeitreihenvorhersage (PyTorch)
-
-### Data Split (Goodfellow et al., 2016)
-
-Die Datensätze werden nach dem Standard aus "Deep Learning" (Goodfellow, Bengio, Courville, 2016) aufgeteilt:
-
-| Set | Anteil | Zweck |
-|-----|--------|-------|
-| Training | 65% | Modelltraining |
-| Validation | 15% | Hyperparameter-Optimierung & Early Stopping |
-| Test | 20% | Unabhängige Bewertung |
-
-### Lookback-Window (Sequenzen)
-
-Alle Modelle verwenden eine **Lookback-Window** Strategie zur Sequenzerzeugung:
+## GRU-Architektur
 
 ```
-L = 60 (Lookback-Window Länge, konfigurierbar)
-
-Input:  X[i:i+L] = Sequenz von L aufeinanderfolgenden Zeitpunkten
-Output: y[i+L]   = Zielwert zum Zeitpunkt (i+L)
-
-Feature pro Zeitpunkt: [Close-Return]
+Input (L, 1)
+    -> GRU(128, return_sequences=True) -> Dropout
+    -> GRU(64) -> Dropout
+    -> Dense(32, relu) -> Dropout
+    -> Dense(1, linear)
 ```
 
-Dies erzeugt Sequenzen der Form:
-- **X shape**: (n_sequences, L, 1) - L Zeitschritte × 1 Feature
-- **y shape**: (n_sequences, 1) - Vorhersage des Close-Returns
+Gleicher Tuning-Bereich wie LSTM für faire Vergleichbarkeit.
 
-## LSTM-Modell
-
-### Architektur
+## CNN-Architektur
 
 ```
-Input Layer
-    ↓
-LSTM(128) [return_sequences=True]
-    ↓
-Dropout(0.2)
-    ↓
-LSTM(64) [return_sequences=False]
-    ↓
-Dropout(0.2)
-    ↓
-Dense(32, activation='relu')
-    ↓
-Dropout(0.2)
-    ↓
-Dense(1, activation='linear') [Output: Close-Return]
+Input (L, 1)
+    -> Conv1D(64, kernel, padding='same') -> MaxPool -> Dropout
+    -> Conv1D(128, kernel, padding='same') -> MaxPool -> Dropout
+    -> Conv1D(256, kernel, padding='same') -> Dropout
+    -> Flatten -> Dense(64) -> Dropout -> Dense(32) -> Dense(1)
 ```
 
-### Hyperparameter
+| Parameter | Default | Tuning-Bereich |
+|-----------|---------|----------------|
+| Lookback Window | 60 | 1..60 (Sweep) |
+| Conv Filter | 64, 128, 256 | fest |
+| Kernel Size | 5 | {3, 5} |
+| Pool Size | 2 | {2, 4} |
+| Dropout | 0.2 | {0.2, 0.4} |
+| Batch Size | 32 | {8, 16, 32} |
+| Epochs | 100 | {50, 100} |
 
-| Parameter | Wert | Begründung |
-|-----------|------|-----------|
-| Lookback Window | 60 | Ca. 3 Monate Trading Days |
-| LSTM Units | 128, 64 | Progressiv abnehmende Komplexität |
-| Dropout Rate | 0.2 | Regularisierung zur Vermeidung von Overfitting |
-| Learning Rate | 0.001 | Standard für Adam Optimizer |
-| Batch Size | 32 | Balance zwischen Stabilität und Effizienz |
-| Epochs | 100 | Mit Early Stopping bei Übertraining |
-
-## GRU-Modell
-
-### Architektur
-
-```
-Input Layer
-    ↓
-GRU(128) [return_sequences=True]
-    ↓
-Dropout(0.2)
-    ↓
-GRU(64) [return_sequences=False]
-    ↓
-Dropout(0.2)
-    ↓
-Dense(32, activation='relu')
-    ↓
-Dropout(0.2)
-    ↓
-Dense(1, activation='linear') [Output: Close-Return]
-```
-
-Gleiche Hyperparameter wie LSTM für faire Vergleichbarkeit.
-
-## CNN-Modell
-
-### Architektur
-
-```
-Input Layer (L, 1)
-    ↓
-Conv1D(64, kernel=5, padding='same') + ReLU
-    ↓
-MaxPooling1D(2)
-    ↓
-Dropout(0.2)
-    ↓
-Conv1D(128, kernel=5, padding='same') + ReLU
-    ↓
-MaxPooling1D(2)
-    ↓
-Dropout(0.2)
-    ↓
-Conv1D(256, kernel=5, padding='same') + ReLU
-    ↓
-Dropout(0.2)
-    ↓
-Flatten
-    ↓
-Dense(64, activation='relu')
-    ↓
-Dropout(0.2)
-    ↓
-Dense(32, activation='relu')
-    ↓
-Dense(1, activation='linear') [Output: Close-Return]
-```
-
-### Hyperparameter
-
-| Parameter | Wert | Begründung |
-|-----------|------|-----------|
-| Lookback Window | 60 | Gleich wie LSTM/GRU für faire Vergleichbarkeit |
-| Conv Filter | 64, 128, 256 | Progressive Tiefe (Feature-Hierarchie) |
-| Kernel Size | 5 | Größeres Fenster für Mustererkennung |
-| Pool Size | 2 | Dimensionsreduktion und Abstraktionen |
-| Dropout Rate | 0.2 | Regularisierung |
-| Learning Rate | 0.001 | Standard für Adam Optimizer |
-| Batch Size | 32 | Konsistent mit LSTM/GRU |
-| Epochs | 100 | Mit Early Stopping |
-
-## Informer-Modell (PyTorch)
-
-### Architektur
+## Informer-Architektur (PyTorch)
 
 ```
 Input (L, n_features)
-        ↓
-  [Data Embedding]
-  Linear(n_features → d_model) + Positional Encoding
-        ↓
-  [Encoder Layer 1]
-  ProbSparse Self-Attention + Feed-Forward + LayerNorm
-        ↓
-  [Distilling Layer]
-  Conv1D + MaxPool (L → L/2)
-        ↓
-  [Encoder Layer 2]
-  ProbSparse Self-Attention + Feed-Forward + LayerNorm
-        ↓
-  [Decoder]
-  Input: letztes L/2 Zeitschritte + 1 Zero-Padding
-  Self-Attention + Cross-Attention + Feed-Forward
-        ↓
-  Linear Projection → (1,) [Output: Close-Log-Return]
+    -> Data Embedding (Linear + Positional Encoding)
+    -> Encoder Layer 1 (ProbSparse Attention + FFN + LayerNorm)
+    -> Distilling (Conv1D + MaxPool: L -> L/2)
+    -> Encoder Layer 2 (ProbSparse Attention + FFN + LayerNorm)
+    -> Decoder (Self-Attention + Cross-Attention + FFN)
+    -> Linear Projection -> (1,)
 ```
 
 ### ProbSparse Self-Attention
 
 Kern-Innovation des Informers (Zhou et al., 2021):
 - Misst die "Sparsity" jeder Query via KL-Divergenz zur Gleichverteilung
-- Wählt nur die Top-u (u = c × ln(L)) aktivsten Queries aus
+- Wählt nur die Top-u (u = c * ln(L)) aktivsten Queries aus
 - Komplexität: O(L log L) statt O(L²) bei Standard-Attention
 
-### Hyperparameter
+| Parameter | Default | Tuning-Bereich |
+|-----------|---------|----------------|
+| Lookback Window | 60 | 1..60 (Sweep) |
+| d_model | 64 | {32, 64} |
+| n_heads | 8 | {4, 8} |
+| e_layers | 2 | fest |
+| d_layers | 1 | fest |
+| d_ff | 256 | 4 * d_model |
+| Dropout | 0.05 | {0.05, 0.1} |
+| Learning Rate | 0.0001 | {0.0001, 0.001} |
+| Batch Size | 32 | {16, 32} |
+| Epochs | 100 | {50, 100} |
+| factor | 5 | fest |
 
-| Parameter | Wert | Begründung |
-|-----------|------|-----------|
-| Lookback Window | 60 | Gleich wie LSTM/CNN/GRU |
-| d_model | 64 | Embedding-Dimension |
-| n_heads | 8 | Multi-Head Attention |
-| e_layers | 2 | Encoder-Schichten |
-| d_layers | 1 | Decoder-Schicht |
-| d_ff | 256 | Feed-Forward Dimension (4 × d_model) |
-| Dropout Rate | 0.05 | Niedrigerer Dropout für Transformer |
-| Learning Rate | 0.0001 | Niedrigere LR für Transformer-Stabilität |
-| Batch Size | 32 | Balance zwischen Stabilität und Effizienz |
-| Epochs | 100 | Mit Early Stopping |
-| factor | 5 | ProbSparse Attention Sampling-Faktor |
+## Helper-Funktionen (informer_model.py)
 
-## Module
+Für die Nutzung in Tuning und Sweep exportiert `informer_model.py` zusätzliche Funktionen:
 
-### `data_preparation.py`
-
-**DataPreparator Klasse:**
-- Laden von CSV-Daten
-- Berechnung prozentualer Returns
-- 65%-15%-20% Split nach Goodfellow
-
-**create_sequences() Funktion:**
-- Erzeugt Lookback-Window Sequenzen
-- Input: Raw Data + Lookback Length
-- Output: (X, y) Paare für Training
-
-Beispiel:
 ```python
-preparator = DataPreparator('data.csv')
-train, val, test = preparator.load_and_prepare()
-X_train, y_train = create_sequences(train, lookback=30)
+from models.informer_model import build_informer, train_informer, evaluate_informer, predict_informer
+
+model = build_informer(lookback_window, n_features, config_dict)
+train_informer(model, X_train, y_train, config_dict, lookback_window)
+mse, mae = evaluate_informer(model, X_test, y_test, lookback_window)
+predictions = predict_informer(model, X_test, lookback_window)
 ```
 
-### `lstm_model.py` / `gru_model.py`
+## Einzelnes Modell ausführen
 
-**LSTMModel / GRUModel Klasse:**
+```bash
+cd models
+python lstm_model.py
+python cnn_model.py
+python gru_model.py
+python informer_model.py
+```
 
-Konfigurierbare Parameter:
+Jedes Modell kann auch direkt instanziiert werden:
+
 ```python
-LOOKBACK_WINDOW = 60
-LSTM_UNITS = [128, 64]  # bzw. GRU_UNITS
-DROPOUT_RATE = 0.2
-DENSE_UNITS = 32
-LEARNING_RATE = 0.001
+from models.lstm_model import LSTMModel
+
+model = LSTMModel('stockData/preprocessedData/SP500_historical_data.csv',
+                   output_dir='parameter_tuning/results/LSTM/SP500')
+model.run_full_pipeline()
 ```
 
-Hauptmethoden:
-- `prepare_data()`: Laden und Sequenzerzeugung
-- `build_model()`: Modellarchitektur
-- `train()`: Trainieren mit Callbacks (EarlyStopping, ReduceLROnPlateau)
-- `evaluate()`: Test-Performance
-- `predict()`: Vorhersagen
-- `plot_results()`: Visualisierung
-- `save_model()`: Persistierung
+## Gemeinsame Eigenschaften
 
-### `cnn_model.py`
-
-**CNNModel Klasse:**
-
-Konfigurierbare Parameter:
-```python
-LOOKBACK_WINDOW = 60
-CONV_FILTERS = [64, 128, 256]
-KERNEL_SIZE = 5
-POOL_SIZE = 2
-DROPOUT_RATE = 0.2
-LEARNING_RATE = 0.001
-```
-
-Selbes Interface wie LSTM/GRU für Vergleichbarkeit.
-
-### `informer_model.py` (PyTorch)
-
-**InformerModel Klasse:**
-
-Konfigurierbare Parameter:
-```python
-LOOKBACK_WINDOW = 60
-D_MODEL = 64
-N_HEADS = 8
-E_LAYERS = 2
-D_LAYERS = 1
-D_FF = 256          # 4 * D_MODEL
-DROPOUT = 0.05
-FACTOR = 5
-LEARNING_RATE = 0.0001
-```
-
-Selbes Interface wie LSTM/GRU/CNN (prepare_data, build_model, train, evaluate, predict, plot_results, save_model).
-
-Zusätzliche Helper-Funktionen für Tuning/Sweep:
-- `build_informer(lookback_window, n_features, config)`: Erstellt Informer-Modell aus Config-Dict
-- `train_informer(model, X_train, y_train, config, lookback_window)`: PyTorch Training-Loop
-- `evaluate_informer(model, X_data, y_data, lookback_window)`: Evaluation (MSE, MAE)
-- `predict_informer(model, X_data, lookback_window)`: Vorhersagen generieren
-
-### `model_comparison.py`
-
-**Vergleichs-Script:**
-- Führt LSTM, CNN, GRU und Informer nacheinander aus
-- Misst Trainingszeit
-- Erstellt JSON-Report
-
-### `hyperparameter_tuning.py`
-
-**FullGridSearchTuner Klasse:**
-- Vollständiger Grid Search über alle Hyperparameter-Kombinationen
-- LSTM: 48 Konfigurationen (dropout × dense_units × lr × batch × epochs)
-- CNN: 48 Konfigurationen (kernel × pool × dropout × batch × epochs)
-- GRU: 48 Konfigurationen (dropout × dense_units × lr × batch × epochs)
-- Informer: 64 Konfigurationen (d_model × n_heads × dropout × lr × batch × epochs)
-- Resume-Support für unterbrochene Durchläufe
-- Ergebnisse in `results/tuning/{MODEL}/{INDEX}/`
-
-### `evaluate_lookback_window_sweep.py`
-
-**Lookback-Window Sweep:**
-- Evaluiert Lookback-Windows von L=1 bis L=60
-- Nutzt per-Index beste Konfiguration aus `best_configurations.json`
-- Erzeugt Plots und JSON-Ergebnisse pro Index in `results/lookback_sweep/{INDEX}/`
-
-## Callbacks
-
-**TensorFlow-Modelle (LSTM, CNN, GRU):**
-
-1. **EarlyStopping**: Stoppt Training wenn Val Loss nicht mehr sinkt
-   - Monitor: val_loss
-   - Patience: 10 Epochen
-   - Restore best weights
-
-2. **ReduceLROnPlateau**: Reduziert Learning Rate bei Plateau
-   - Factor: 0.5
-   - Patience: 5 Epochen
-   - Min LR: 1e-6
-
-**PyTorch-Modell (Informer):**
-
-1. **EarlyStopping**: Manuell implementiert mit Patience-Counter
-   - Patience: 10 Epochen
-   - Restore best weights via state_dict
-
-## Datenfluss
-
-```
-preprocessedData/*.csv
-        ↓
-  [Data Preparation]
-        ↓
-    +--------+--------+--------+
-    |        |        |        |
-   65%      15%      20%
-  Train    Val      Test
-    |        |        |
-    +--------+--------+
-           ↓
-    [Sequences L=1..60]
-           ↓
-    +--LSTM--+--GRU------+
-    |        |           |
-    +--CNN---+--Informer-+
-           ↓
-      [Predictions]
-           ↓
-    [Original Scale]
-```
-
-## Referenzen
-
-- Goodfellow, I., Bengio, Y., & Courville, A. (2016). *Deep Learning*. MIT Press.
-- Hochreiter, S., & Schmidhuber, J. (1997). Long short-term memory. *Neural computation*, 9(8), 1735-1780.
-- Cho, K. et al. (2014). Learning Phrase Representations using RNN Encoder-Decoder. *arXiv:1406.1078*.
-- LeCun, Y., Bengio, Y., & Hinton, G. (2015). Deep learning. *Nature*, 521(7553), 436-444.
-- Zhou, H. et al. (2021). Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting. *AAAI 2021* (Best Paper).
+- **Input**: Log-Returns r(t) = ln(P(t) / P(t-1))
+- **Target**: Close-Log-Return (Single-Output)
+- **Optimizer**: Adam
+- **Loss**: MSE (Mean Squared Error)
+- **Training**: Feste Epochenzahl (kein EarlyStopping)
+- **Data Split**: 65%-15%-20% (Goodfellow et al., 2016)
+- **Inverse Transform**: Rücktransformation von Returns zu Preisen via `DataPreparator`

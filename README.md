@@ -1,89 +1,79 @@
 # Masterarbeit - Stock Price Prediction mit Deep Learning
 
-Dieses Repository enthält die Implementierung von Deep Learning Modellen (LSTM, CNN, GRU und Informer) zur Vorhersage von Aktienkursen basierend auf historischen Daten.
+Vorhersage von Aktienkursen mit LSTM, CNN, GRU und Informer auf Basis von Log-Returns für 8 Finanzindizes.
 
-## Repository-Struktur
+## Projektstruktur
 
 ```
 Masterarbeit/
-├── models/                          # Deep Learning Modelle und Implementierungen
-│   ├── lstm_model.py                # LSTM-Modell (60-Tage floating window, TensorFlow)
-│   ├── cnn_model.py                 # CNN-Modell (60-Tage floating window, TensorFlow)
-│   ├── gru_model.py                 # GRU-Modell (60-Tage floating window, TensorFlow)
-│   ├── informer_model.py            # Informer-Modell (60-Tage floating window, PyTorch)
-│   ├── data_preparation.py          # Datenaufbereitung und Sequenzerzeugung
-│   ├── model_comparison.py          # Vergleich aller Modelle
-│   ├── hyperparameter_tuning.py     # Full Grid Search (LSTM: 48, CNN: 48, GRU: 48, Informer: 64 Configs)
-│   ├── evaluate_lookback_window_sweep.py  # Lookback-Window Sweep (L=1..60)
-│   └── README.md                    # Detaillierte Modell-Dokumentation
+├── models/                              # Modell-Implementierungen
+│   ├── lstm_model.py                    # LSTM (TensorFlow)
+│   ├── cnn_model.py                     # CNN (TensorFlow)
+│   ├── gru_model.py                     # GRU (TensorFlow)
+│   ├── informer_model.py               # Informer (PyTorch)
+│   └── README.md                        # Modell-Dokumentation
 │
-├── stockData/                # Aktiendaten und Datenverarbeitung
-│   ├── sourceData/           # Rohdaten von Yahoo Finance
-│   ├── preprocessedData/     # Bereinigte CSV-Dateien (absolute Preise)
-│   ├── get-data/             # Scripts zum Datenabruf
-│   └── plots/                # Datenvisualisierungen
+├── data_preparation/                    # Schritt 1: Datenaufbereitung
+│   └── data_preparation.py             # Log-Returns, Splits, Sequenzen
 │
-├── results/                  # Alle Modell-Ergebnisse
-│   ├── tuning/               # Hyperparameter-Tuning-Ergebnisse (8 Indizes)
-│   │   ├── LSTM/{INDEX}/     # LSTM-Tuning (48 Configs pro Index)
-│   │   ├── CNN/{INDEX}/      # CNN-Tuning (48 Configs pro Index)
-│   │   ├── GRU/{INDEX}/      # GRU-Tuning (48 Configs pro Index)
-│   │   └── INFORMER/{INDEX}/ # Informer-Tuning (64 Configs pro Index)
-│   ├── lookback_sweep/       # Lookback-Window Sweep (L=1..60, 8 Indizes)
-│   ├── best_configurations.json   # Beste Konfiguration pro Index
-│   └── cross_index_comparison.json # Cross-Index Vergleich
+├── parameter_tuning/                    # Schritt 2: Hyperparameter-Optimierung
+│   ├── parameter_tuning.py             # Full Grid Search (208 Configs)
+│   └── results/                         # Tuning-Ergebnisse pro Index
+│       ├── {LSTM,CNN,GRU,INFORMER}/{INDEX}/
+│       └── best_configurations.json
 │
-└── run_pipeline.py           # Parallelisierte Pipeline (Tuning + Sweep)
+├── lookback_window_sweep/               # Schritt 3: Lookback-Window Sweep
+│   ├── lookback_window_sweep.py
+│   ├── rerun_sp500.py                   # Helper: SP500 nachlaufen
+│   └── results/{INDEX}/                 # Sweep-Ergebnisse (L=1..60)
+│
+├── comparison/                          # Schritt 4: Vergleich & Auswertung
+│   ├── model_comparison.py              # Vergleich aller 4 Modelle
+│   ├── post_processing.py              # Erweiterte Metriken (DA%, R²)
+│   └── results/                         # Vergleichsergebnisse
+│       ├── {INDEX}/                     # Per-Index Plots & Metriken
+│       └── cross_index_comparison.json
+│
+├── stockData/                           # Aktiendaten
+│   ├── sourceData/                      # Rohdaten von Yahoo Finance
+│   ├── preprocessedData/                # Bereinigte CSV-Dateien
+│   ├── get-data/                        # Scripts zum Datenabruf
+│   └── plots/                           # Datenvisualisierungen
+│
+├── run_pipeline.py                      # Parallelisierte Pipeline (Orchestrator)
+└── quick_verify.py                      # Schnelltest aller Modelle
 ```
 
-## Hauptkomponenten
+## Pipeline
 
-### 1. Models Directory (`models/`)
+Die Pipeline (`run_pipeline.py`) führt das gesamte Experiment parallelisiert aus:
 
-Das Herzstück des Projekts mit allen Machine Learning Modellen und Hilfsfunktionen.
+```
+Schritt 1: Parameter-Tuning         8 Indizes × 208 Configs = 1664 Tasks
+Schritt 2: Ergebnisse sammeln       Beste Config pro Index ermitteln
+Schritt 3: Lookback Sweep           8 Indizes × 60 L-Werte = 480 Tasks
+Schritt 4: Cross-Index Vergleich    Konfigurationen vergleichen
+```
 
-**Detaillierte Dokumentation:** Siehe [models/README.md](models/README.md)
+```bash
+python run_pipeline.py                  # Alles parallel (8 Workers)
+python run_pipeline.py --workers 16     # Mehr Parallelität
+python run_pipeline.py --skip-tuning    # Tuning überspringen
+python run_pipeline.py --clean-only     # Nur aufräumen
+```
 
-Hauptdateien:
-- `lstm_model.py`: LSTM-Modell mit konfigurierbarem Lookback Window (TensorFlow)
-- `cnn_model.py`: CNN-Modell mit konfigurierbarem Lookback Window (TensorFlow)
-- `gru_model.py`: GRU-Modell mit konfigurierbarem Lookback Window (TensorFlow)
-- `informer_model.py`: Informer-Modell mit ProbSparse Self-Attention (PyTorch)
-- `data_preparation.py`: Datenaufbereitung, Log-Returns, Train-Val-Test Split (65%-15%-20%)
-- `model_comparison.py`: Automatisierter Vergleich aller Modelle
-- `hyperparameter_tuning.py`: Full Grid Search (LSTM: 48, CNN: 48, GRU: 48, Informer: 64 = 208 Konfigurationen)
-- `evaluate_lookback_window_sweep.py`: Lookback-Window Sweep (L=1..60) mit per-Index bester Konfiguration
+Nach Pipeline-Abschluss:
 
-### 2. Stock Data Directory (`stockData/`)
-
-Enthält alle Aktiendaten in verschiedenen Verarbeitungsstufen:
-
-- **sourceData/**: Originaldaten von Yahoo Finance
-- **preprocessedData/**: Bereinigte CSV-Dateien (absolute Preise, Returns werden zur Laufzeit berechnet)
-- **get-data/**: Python-Scripts zum Herunterladen neuer Daten
-- **plots/**: Visualisierungen der Datenanalyse
-
-### 3. Pipeline (`run_pipeline.py`)
-
-Maximal parallelisierte Pipeline für das gesamte Experiment:
-1. **Hyperparameter-Tuning**: 8 Indizes × 208 Configs = 1664 Tasks parallel
-2. **Ergebnisse sammeln**: Beste Konfiguration pro Index ermitteln
-3. **Lookback Sweep**: 8 Indizes × 60 L-Werte = 480 Tasks parallel
-4. **Cross-Index Vergleich**: Konfigurationen und Ergebnisse vergleichen
-
-### 4. Ergebnisse
-
-- **results/tuning/{LSTM,CNN,GRU,INFORMER}/{INDEX}/**: Hyperparameter-Tuning-Ergebnisse pro Index
-- **results/lookback_sweep/{INDEX}/**: Lookback-Window Sweep (L=1..60, 8 Indizes)
-- **results/best_configurations.json**: Beste Konfiguration pro Index und Modelltyp
-- **results/cross_index_comparison.json**: Vergleich über alle Indizes
+```bash
+python comparison/post_processing.py    # Erweiterte Metriken berechnen
+```
 
 ## Schnellstart
 
 ### Voraussetzungen
 
 ```bash
-pip install tensorflow pandas numpy matplotlib yfinance torch
+pip install tensorflow pandas numpy matplotlib seaborn yfinance torch
 ```
 
 ### Einzelnes Modell trainieren
@@ -93,90 +83,99 @@ cd models
 python lstm_model.py
 python cnn_model.py
 python gru_model.py
+python informer_model.py
 ```
 
-### Alle drei Modelle vergleichen
+### Modelle vergleichen
 
 ```bash
-cd models
-python model_comparison.py
+python comparison/model_comparison.py
 ```
 
-### Gesamte Pipeline ausführen
+## Modelle
 
-```bash
-python run_pipeline.py                # Alles parallel (8 Workers)
-python run_pipeline.py --workers 16   # Mehr Parallelität
-python run_pipeline.py --skip-tuning  # Tuning überspringen
-```
-
-## Modell-Architektur
-
-Alle vier Modelle verwenden:
-- **Lookback Window**: 60 Handelstage (backward-looking, konfigurierbar)
-- **Train-Val-Test Split**: 65%-15%-20% (nach Goodfellow et al., 2016)
-- **Optimizer**: Adam
-- **Loss**: MSE (Mean Squared Error)
-- **Input**: Log-Returns r(t) = ln(P(t) / P(t-1))
-- **Target**: Close-Log-Return (Single-Output)
-
-### LSTM (TensorFlow)
-- 2 LSTM-Layer (128, 64 Units)
-- Dropout: 0.2
-- Dense Layer: 32 Units
-- Learning Rate: 0.001
-
-### GRU (TensorFlow)
-- 2 GRU-Layer (128, 64 Units)
-- Dropout: 0.2
-- Dense Layer: 32 Units
-- Learning Rate: 0.001
-
-### CNN (TensorFlow)
-- 3 Conv1D-Layer (64, 128, 256 Filter)
-- Kernel Size: 5, Max Pooling: 2
-- Dense Layers: 64, 32 Units
-- Learning Rate: 0.001
-
-### Informer (PyTorch)
-- ProbSparse Self-Attention (O(L log L) statt O(L²))
-- Self-Attention Distilling (ConvPool zwischen Encoder-Layers)
-- Encoder-Decoder Architektur (2 Encoder-Layer, 1 Decoder-Layer)
-- d_model: 64, n_heads: 8, d_ff: 256
-- Dropout: 0.05, Learning Rate: 0.0001
-- Single-step Prediction (pred_len=1, label_len=L/2)
-
-## Floating Window Konzept
-
-Das Projekt implementiert ein **backward-looking floating window**:
+Alle vier Modelle verwenden dasselbe Interface und identischen Datenfluss:
 
 ```
-Für jeden Zeitpunkt i:
-  Input:  Daten von [i-L, i-L+1, ..., i-1] (L Tage Historie)
-  Output: Return am Tag i
-
-Das Fenster "gleitet" über die gesamten Trainingsdaten.
+preprocessedData/*.csv
+    -> Log-Returns: r(t) = ln(P(t) / P(t-1))
+    -> 65%-15%-20% Split (Goodfellow et al., 2016)
+    -> Sequences (Lookback Window L=1..60)
+    -> Training (feste Epochenzahl, kein EarlyStopping)
+    -> Predictions (Returns -> Preise via Inverse Transform)
 ```
+
+| Modell | Framework | Architektur | Tuning-Configs |
+|--------|-----------|-------------|----------------|
+| LSTM | TensorFlow | 2× LSTM (128, 64) + Dense(32) | 48 |
+| CNN | TensorFlow | 3× Conv1D (64, 128, 256) + Dense(64, 32) | 48 |
+| GRU | TensorFlow | 2× GRU (128, 64) + Dense(32) | 48 |
+| Informer | PyTorch | ProbSparse Attention + Encoder-Decoder | 64 |
+
+Detaillierte Modell-Dokumentation: [models/README.md](models/README.md)
+
+## Datenaufbereitung (data_preparation/)
+
+- Laden von CSV-Daten (absolute Preise)
+- Berechnung von Log-Returns: r(t) = ln(P(t) / P(t-1))
+- Train-Val-Test Split: 65%-15%-20% (Goodfellow et al., 2016)
+- Sequenzerzeugung mit konfigurierbarem Lookback Window
+- Inverse Transform: Rücktransformation von Returns zu Preisen
+
+```python
+from data_preparation import DataPreparator, create_sequences
+
+preparator = DataPreparator('stockData/preprocessedData/SP500_historical_data.csv')
+train, val, test = preparator.load_and_prepare()
+X_train, y_train = create_sequences(train, lookback=30)
+```
+
+## Parameter-Tuning (parameter_tuning/)
+
+Full Grid Search über alle Kombinationen:
+- LSTM: 48 Configs (dropout × dense_units × lr × batch × epochs)
+- CNN: 48 Configs (kernel × pool × dropout × batch × epochs)
+- GRU: 48 Configs (dropout × dense_units × lr × batch × epochs)
+- Informer: 64 Configs (d_model × n_heads × dropout × lr × batch × epochs)
+- Resume-Support für unterbrochene Durchläufe
+- Ergebnisse in `parameter_tuning/results/{MODEL}/{INDEX}/`
+
+## Lookback-Window Sweep (lookback_window_sweep/)
+
+- Evaluiert L=1 bis L=60 für alle 4 Modelle
+- Nutzt per-Index beste Konfiguration aus `parameter_tuning/results/best_configurations.json`
+- Erzeugt Plots (MAE vs L, Predictions, Scatter) und JSON pro Index
+- Ergebnisse in `lookback_window_sweep/results/{INDEX}/`
+
+## Vergleich & Post-Processing (comparison/)
+
+Trainiert die 32 besten Modelle (8 Indizes × 4 Modelle) mit jeweils bester Config und bestem L:
+- **Directional Accuracy (DA%)**: Anteil korrekt vorhergesagter Kursrichtungen
+- **Naive Baseline MAE**: MAE wenn immer 0 vorhergesagt wird = mean(|y_actual|)
+- **MAE Improvement**: (baseline_mae - model_mae) / baseline_mae × 100
+- **R²**: Bestimmtheitsmaß
+- Cross-Index Heatmaps (DA%, MAE Improvement, R²)
+- Ergebnisse in `comparison/results/`
 
 ## Datensätze
 
-Das Repository enthält 8 Datensätze in `stockData/preprocessedData/`:
+8 Indizes in `stockData/preprocessedData/`:
 
-- **SP500_historical_data.csv** - S&P 500 Index
-- **NASDAQ_historical_data.csv** - NASDAQ Composite
-- **DAX_historical_data.csv** - Deutscher Aktienindex
-- **FTSE100_historical_data.csv** - Financial Times Stock Exchange 100
-- **NIKKEI_historical_data.csv** - Nikkei 225 (Japan)
-- **HANG_SENG_historical_data.csv** - Hang Seng Index (Hong Kong)
-- **10-Year Bond_historical_data.csv** - 10-Jahres Staatsanleihen
-- **30 Year Bond_historical_data.csv** - 30-Jahres Staatsanleihen
+| Index | Datei |
+|-------|-------|
+| S&P 500 | SP500_historical_data.csv |
+| NASDAQ | NASDAQ_historical_data.csv |
+| DAX | DAX_historical_data.csv |
+| FTSE 100 | FTSE100_historical_data.csv |
+| Nikkei 225 | NIKKEI_historical_data.csv |
+| Hang Seng | HANG_SENG_historical_data.csv |
+| 10Y Bond | 10-Year Bond_historical_data.csv |
+| 30Y Bond | 30 Year Bond_historical_data.csv |
 
-Alle Datensätze enthalten absolute Preise. Log-Returns werden zur Laufzeit in `data_preparation.py` berechnet.
+## Referenzen
 
-## Wissenschaftliche Grundlagen
-
-- **Data Split**: Goodfellow, Bengio, Courville (2016) - "Deep Learning"
-- **LSTM**: Hochreiter & Schmidhuber (1997)
-- **GRU**: Cho et al. (2014) - "Learning Phrase Representations using RNN Encoder-Decoder"
-- **CNN for Time Series**: LeCun, Bengio, Hinton (2015)
-- **Informer**: Zhou et al. (2021) - "Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting" (AAAI 2021 Best Paper)
+- Goodfellow, I., Bengio, Y., & Courville, A. (2016). *Deep Learning*. MIT Press.
+- Hochreiter, S., & Schmidhuber, J. (1997). Long short-term memory. *Neural computation*, 9(8).
+- Cho, K. et al. (2014). Learning Phrase Representations using RNN Encoder-Decoder. *arXiv:1406.1078*.
+- LeCun, Y., Bengio, Y., & Hinton, G. (2015). Deep learning. *Nature*, 521(7553).
+- Zhou, H. et al. (2021). Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting. *AAAI 2021* (Best Paper).

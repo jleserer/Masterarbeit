@@ -8,18 +8,20 @@ Architecture & Hyperparameters (parallel to LSTM model):
   - Optimizer: Adam (learning rate 0.001)
   - Loss: MSE (for single-output regression)
 
-Loopback Window: L=60 (60 trading days history)
+Lookback Window: L=60 (60 trading days history)
 Target: Single-output (Close price only)
 """
 
 import os
+import sys
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import GRU, Dense, Dropout
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from data_preparation import DataPreparator, create_sequences
 
 
@@ -35,7 +37,7 @@ class GRUModel:
     BATCH_SIZE = 32
     EPOCHS = 100
 
-    def __init__(self, data_path, output_dir=os.path.join('..', 'results', 'tuning', 'GRU', 'SP500')):
+    def __init__(self, data_path, output_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'parameter_tuning', 'results', 'GRU', 'SP500')):
         """
         Args:
             data_path: Path to CSV file
@@ -61,8 +63,8 @@ class GRUModel:
         self.preparator = DataPreparator(self.data_path)
         train_data, val_data, test_data = self.preparator.load_and_prepare()
 
-        # Create sequences with loopback window
-        print(f"\nCreating sequences with Loopback Window L={self.LOOKBACK_WINDOW}...")
+        # Create sequences with lookback window
+        print(f"\nCreating sequences with Lookback Window L={self.LOOKBACK_WINDOW}...")
         self.X_train, self.y_train = create_sequences(train_data, self.LOOKBACK_WINDOW)
         self.X_val, self.y_val = create_sequences(val_data, self.LOOKBACK_WINDOW)
         self.X_test, self.y_test = create_sequences(test_data, self.LOOKBACK_WINDOW)
@@ -121,9 +123,6 @@ class GRUModel:
         print("STEP 3: Train GRU Model")
         print("=" * 70)
 
-        # With percentage returns, val data has a similar distribution to training data
-        # (no domain shift). EarlyStopping could be used but is kept disabled for
-        # consistency with the hyperparameter tuning results.
         self.history = self.model.fit(
             self.X_train, self.y_train,
             validation_data=(self.X_val, self.y_val),
@@ -234,5 +233,5 @@ if __name__ == "__main__":
         'SP500_historical_data.csv'
     )
 
-    gru = GRUModel(data_path, output_dir=os.path.join('..', 'results', 'tuning', 'GRU', 'SP500'))
+    gru = GRUModel(data_path)
     gru.run_full_pipeline()
