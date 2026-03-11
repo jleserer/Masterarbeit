@@ -36,6 +36,7 @@ def get_env():
     env['TF_NUM_INTEROP_THREADS'] = '1'
     env['TF_CPP_MIN_LOG_LEVEL'] = '2'
     env['OMP_NUM_THREADS'] = '2'
+    env['BEST_CONFIGS_PATH'] = BEST_CONFIGS
     return env
 
 

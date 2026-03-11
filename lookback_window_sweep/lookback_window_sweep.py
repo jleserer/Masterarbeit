@@ -305,96 +305,162 @@ def evaluate_lookback_windows(data_path, output_dir):
     return results, preparator, train_data, val_data, test_data
 
 
-def generate_predictions_multiple_L(preparator, train_data, val_data, test_data, 
-                                     best_L_values, output_dir):
-    """Generate predictions for multiple best L values."""
+def predict_single_L(data_path, output_dir, L):
+    """Train all 4 models for a single L and save predictions as .npz."""
+    import tensorflow as tf
+    n_threads = int(os.environ.get('TF_WORKER_THREADS', '4'))
+    tf.config.threading.set_intra_op_parallelism_threads(n_threads)
+    tf.config.threading.set_inter_op_parallelism_threads(2)
+    np.random.seed(42)
+    tf.random.set_seed(42)
+
+    preparator = DataPreparator(data_path)
+    train_data, val_data, test_data = preparator.load_and_prepare()
+
+    X_train, y_train = create_sequences(train_data, L)
+    X_test, y_test = create_sequences(test_data, L)
+    n_features = X_train.shape[2]
+
+    # LSTM
+    lstm_model = build_lstm_model(L, n_features, BEST_LSTM_CONFIG)
+    lstm_model.fit(X_train, y_train, epochs=BEST_LSTM_CONFIG['epochs'],
+                   batch_size=BEST_LSTM_CONFIG['batch'], verbose=0)
+    lstm_predictions = lstm_model.predict(X_test, verbose=0).flatten()
+    del lstm_model
+    tf.keras.backend.clear_session()
+
+    # CNN
+    cnn_model = build_cnn_model(L, n_features, BEST_CNN_CONFIG)
+    cnn_model.fit(X_train, y_train, epochs=BEST_CNN_CONFIG['epochs'],
+                  batch_size=BEST_CNN_CONFIG['batch'], verbose=0)
+    cnn_predictions = cnn_model.predict(X_test, verbose=0).flatten()
+    del cnn_model
+    tf.keras.backend.clear_session()
+
+    # GRU
+    gru_model = build_gru_model(L, n_features, BEST_GRU_CONFIG)
+    gru_model.fit(X_train, y_train, epochs=BEST_GRU_CONFIG['epochs'],
+                  batch_size=BEST_GRU_CONFIG['batch'], verbose=0)
+    gru_predictions = gru_model.predict(X_test, verbose=0).flatten()
+    del gru_model
+    tf.keras.backend.clear_session()
+
+    # Informer
+    from models.informer_model import predict_informer, train_informer
+    import torch
+    torch.manual_seed(42)
+    informer_model = build_informer_sweep_model(L, n_features, BEST_INFORMER_CONFIG)
+    informer_config_full = {**BEST_INFORMER_CONFIG, 'e_layers': 2, 'd_layers': 1, 'factor': 5}
+    train_informer(informer_model, X_train, y_train, informer_config_full, L, verbose=0)
+    informer_predictions = predict_informer(informer_model, X_test, L)
+    del informer_model
+
+    # Inverse transform
+    y_test_original = preparator.inverse_transform(
+        y_test.reshape(-1, 1), split='test', lookback=L).flatten()
+    lstm_pred_original = preparator.inverse_transform(
+        lstm_predictions.reshape(-1, 1), split='test', lookback=L).flatten()
+    cnn_pred_original = preparator.inverse_transform(
+        cnn_predictions.reshape(-1, 1), split='test', lookback=L).flatten()
+    gru_pred_original = preparator.inverse_transform(
+        gru_predictions.reshape(-1, 1), split='test', lookback=L).flatten()
+    informer_pred_original = preparator.inverse_transform(
+        informer_predictions.reshape(-1, 1), split='test', lookback=L).flatten()
+
+    # Save as .npz
+    npz_path = os.path.join(output_dir, f'pred_L_{L:02d}.npz')
+    np.savez(npz_path,
+             y_actual_normalized=y_test,
+             lstm_pred_normalized=lstm_predictions,
+             cnn_pred_normalized=cnn_predictions,
+             gru_pred_normalized=gru_predictions,
+             informer_pred_normalized=informer_predictions,
+             y_actual_original=y_test_original,
+             lstm_pred_original=lstm_pred_original,
+             cnn_pred_original=cnn_pred_original,
+             gru_pred_original=gru_pred_original,
+             informer_pred_original=informer_pred_original,
+             test_indices=np.arange(L + 1, len(test_data) + 1))
+    print(f"  pred L={L:2d} saved", flush=True)
+
+
+def generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
+                                     best_L_values, output_dir,
+                                     data_path=None, max_workers=32):
+    """Generate predictions for multiple best L values (parallel via subprocesses)."""
     print(f"\n{'='*70}")
     print(f"GENERATING PREDICTIONS FOR BEST L VALUES: {best_L_values}")
     print(f"{'='*70}")
 
+    # Try parallel subprocess dispatch if data_path is available
+    if data_path is not None:
+        import subprocess
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import time
+
+        script = os.path.abspath(__file__)
+        # Build env with reduced threads per worker
+        env = os.environ.copy()
+        env['TF_CPP_MIN_LOG_LEVEL'] = '2'
+        env['TF_WORKER_THREADS'] = '2'
+
+        # Find best-configs path (passed via CLI)
+        best_configs = env.get('BEST_CONFIGS_PATH', '')
+
+        index_name = None
+        for idx, csv in INDICES.items():
+            if csv in data_path:
+                index_name = idx
+                break
+
+        def run_predict_one(L):
+            cmd = [sys.executable, '-u', script,
+                   '--index', index_name, '--predict-one', str(L)]
+            if best_configs:
+                cmd += ['--best-configs', best_configs]
+            start = time.time()
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    env=env, cwd=PROJECT_ROOT)
+            elapsed = time.time() - start
+            status = 'OK' if result.returncode == 0 else 'FAIL'
+            if status == 'FAIL':
+                print(f"  FAIL pred L={L}: {result.stderr[-300:]}", flush=True)
+            return L, status, elapsed
+
+        print(f"Dispatching {len(best_L_values)} predictions with {max_workers} workers...",
+              flush=True)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(run_predict_one, L): L for L in best_L_values}
+            for future in as_completed(futures):
+                L, status, elapsed = future.result()
+                print(f"  L={L:2d} {status} ({elapsed:.0f}s)", flush=True)
+
+    # Load results from .npz files
     predictions_data = {}
-
     for L in best_L_values:
-        print(f"\nProcessing L = {L}...", end=" ", flush=True)
-
-        # Create sequences
-        X_train, y_train = create_sequences(train_data, L)
-        X_val, y_val = create_sequences(val_data, L)
-        X_test, y_test = create_sequences(test_data, L)
-
-        n_features = X_train.shape[2]
-
-        # Train LSTM
-        # With percentage returns, val data has a similar distribution to training data.
-        # Fixed epochs ensure fair and complete training.
-        lstm_model = build_lstm_model(L, n_features, BEST_LSTM_CONFIG)
-        lstm_model.fit(
-            X_train, y_train,
-            epochs=BEST_LSTM_CONFIG['epochs'],
-            batch_size=BEST_LSTM_CONFIG['batch'],
-            verbose=0
-        )
-        lstm_predictions = lstm_model.predict(X_test, verbose=0).flatten()
-
-        # Train CNN
-        cnn_model = build_cnn_model(L, n_features, BEST_CNN_CONFIG)
-        cnn_model.fit(
-            X_train, y_train,
-            epochs=BEST_CNN_CONFIG['epochs'],
-            batch_size=BEST_CNN_CONFIG['batch'],
-            verbose=0
-        )
-        cnn_predictions = cnn_model.predict(X_test, verbose=0).flatten()
-
-        # Train GRU
-        gru_model = build_gru_model(L, n_features, BEST_GRU_CONFIG)
-        gru_model.fit(
-            X_train, y_train,
-            epochs=BEST_GRU_CONFIG['epochs'],
-            batch_size=BEST_GRU_CONFIG['batch'],
-            verbose=0
-        )
-        gru_predictions = gru_model.predict(X_test, verbose=0).flatten()
-
-        # Train Informer
-        from models.informer_model import predict_informer
-        informer_model = build_informer_sweep_model(L, n_features, BEST_INFORMER_CONFIG)
-        informer_config_full = {**BEST_INFORMER_CONFIG, 'e_layers': 2, 'd_layers': 1, 'factor': 5}
-        from models.informer_model import train_informer
-        train_informer(informer_model, X_train, y_train, informer_config_full, L, verbose=0)
-        informer_predictions = predict_informer(informer_model, X_test, L)
-
-        # Inverse transform to original price scale
-        y_test_original = preparator.inverse_transform(
-            y_test.reshape(-1, 1), split='test', lookback=L).flatten()
-        lstm_pred_original = preparator.inverse_transform(
-            lstm_predictions.reshape(-1, 1), split='test', lookback=L).flatten()
-        cnn_pred_original = preparator.inverse_transform(
-            cnn_predictions.reshape(-1, 1), split='test', lookback=L).flatten()
-        gru_pred_original = preparator.inverse_transform(
-            gru_predictions.reshape(-1, 1), split='test', lookback=L).flatten()
-        informer_pred_original = preparator.inverse_transform(
-            informer_predictions.reshape(-1, 1), split='test', lookback=L).flatten()
-
-        predictions_data[L] = {
-            'y_actual_normalized': y_test,
-            'lstm_pred_normalized': lstm_predictions,
-            'cnn_pred_normalized': cnn_predictions,
-            'gru_pred_normalized': gru_predictions,
-            'informer_pred_normalized': informer_predictions,
-            'y_actual_original': y_test_original,
-            'lstm_pred_original': lstm_pred_original,
-            'cnn_pred_original': cnn_pred_original,
-            'gru_pred_original': gru_pred_original,
-            'informer_pred_original': informer_pred_original,
-            'test_indices': np.arange(L + 1, len(test_data) + 1)
-        }
-
-        # Clear models
-        del lstm_model, cnn_model, gru_model, informer_model
-        tf.keras.backend.clear_session()
-
-        print(f"Done!")
+        npz_path = os.path.join(output_dir, f'pred_L_{L:02d}.npz')
+        if os.path.exists(npz_path):
+            d = np.load(npz_path)
+            predictions_data[L] = {
+                'y_actual_normalized': d['y_actual_normalized'],
+                'lstm_pred_normalized': d['lstm_pred_normalized'],
+                'cnn_pred_normalized': d['cnn_pred_normalized'],
+                'gru_pred_normalized': d['gru_pred_normalized'],
+                'informer_pred_normalized': d['informer_pred_normalized'],
+                'y_actual_original': d['y_actual_original'],
+                'lstm_pred_original': d['lstm_pred_original'],
+                'cnn_pred_original': d['cnn_pred_original'],
+                'gru_pred_original': d['gru_pred_original'],
+                'informer_pred_original': d['informer_pred_original'],
+                'test_indices': d['test_indices']
+            }
+            d.close()
+            try:
+                os.remove(npz_path)
+            except PermissionError:
+                pass  # Windows file lock — will be cleaned up later
+        else:
+            print(f"  WARNING: Missing predictions for L={L}")
 
     return predictions_data
 
@@ -888,7 +954,8 @@ def collect_and_plot(data_path, output_dir):
     all_best_L = sorted(set(best_lstm_L_values + best_cnn_L_values +
                             best_gru_L_values + best_informer_L_values))
     all_predictions = generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
-                                                      all_best_L, output_dir)
+                                                      all_best_L, output_dir,
+                                                      data_path=data_path)
 
     # Create prediction plots
     print(f"\nGenerating plots...")
@@ -935,6 +1002,8 @@ if __name__ == "__main__":
                         help='Single lookback window L to train (for parallel dispatch)')
     parser.add_argument('--collect', action='store_true',
                         help='Collect individual L results and generate plots')
+    parser.add_argument('--predict-one', type=int, default=None,
+                        help='Train all models for a single L and save predictions as .npz')
     parser.add_argument('--best-configs', type=str, default=None,
                         help='Path to best_configurations.json with per-index configs')
     args = parser.parse_args()
@@ -986,6 +1055,20 @@ if __name__ == "__main__":
         data_path = os.path.join(data_dir, INDICES[args.index])
         output_dir = os.path.join(results_base, args.index)
         run_single_lookback(data_path, output_dir, args.lookback)
+        sys.exit(0)
+
+    # Predict-one mode: train all models for one L and save .npz
+    if args.predict_one is not None:
+        if not args.index:
+            print("Error: --predict-one requires --index")
+            sys.exit(1)
+        if args.index not in INDICES:
+            print(f"Error: Unknown index '{args.index}'. Available: {list(INDICES.keys())}")
+            sys.exit(1)
+        data_path = os.path.join(data_dir, INDICES[args.index])
+        output_dir = os.path.join(results_base, args.index)
+        os.makedirs(output_dir, exist_ok=True)
+        predict_single_L(data_path, output_dir, args.predict_one)
         sys.exit(0)
 
     # Collect mode: assemble results and generate plots
