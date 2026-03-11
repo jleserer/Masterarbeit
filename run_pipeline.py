@@ -43,7 +43,7 @@ COMPARE_DIR  = PROJECT_ROOT / 'comparison'
 TUNING_RESULTS_DIR = TUNING_DIR / 'results'
 SWEEP_RESULTS_DIR  = SWEEP_DIR / 'results'
 COMPARE_RESULTS_DIR = COMPARE_DIR / 'results'
-LOGS_DIR     = PROJECT_ROOT / 'results' / 'logs'
+LOGS_DIR     = PROJECT_ROOT / 'logs'
 
 ALL_INDICES = ['SP500', 'DAX', 'NASDAQ', 'FTSE100', 'HANG_SENG', 'NIKKEI', '10Y_Bond', '30Y_Bond']
 
@@ -392,7 +392,7 @@ def run_parallel_sweep(max_workers, tf_threads):
 
         if failed:
             for name, L, _, _ in failed[:10]:
-                print(f"    FEHLER: {name} L={L} (siehe results/logs/sweep_{name}_L{L:02d}.log)")
+                print(f"    FEHLER: {name} L={L} (siehe logs/sweep_{name}_L{L:02d}.log)")
     else:
         print("  Alle Tasks bereits abgeschlossen!")
 
@@ -417,7 +417,7 @@ def run_parallel_sweep(max_workers, tf_threads):
 
     if failed:
         for name, _, _ in failed:
-            print(f"    FEHLER: {name} (siehe results/logs/sweep_{name}_collect.log)")
+            print(f"    FEHLER: {name} (siehe logs/sweep_{name}_collect.log)")
 
     return len(failed) == 0
 
