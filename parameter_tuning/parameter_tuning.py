@@ -387,12 +387,14 @@ class FullGridSearchTuner:
             'test_rmse': float(np.sqrt(test_loss))
         }
 
-    def save_training_plot(self, history, config_name, model_type, output_dir):
+    def save_training_plot(self, history, config_name, model_type, output_dir, metrics=None):
         """Save training history plot."""
         fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
         axes[0].plot(history.history['loss'], label='Train Loss')
         axes[0].plot(history.history['val_loss'], label='Val Loss')
+        if metrics:
+            axes[0].axhline(y=metrics['test_loss'], color='green', linestyle='--', label='Test Loss')
         axes[0].set_xlabel('Epoch')
         axes[0].set_ylabel('Loss (MSE)')
         axes[0].set_title(f'{model_type} - Loss')
@@ -401,6 +403,8 @@ class FullGridSearchTuner:
 
         axes[1].plot(history.history['mae'], label='Train MAE')
         axes[1].plot(history.history['val_mae'], label='Val MAE')
+        if metrics:
+            axes[1].axhline(y=metrics['test_mae'], color='green', linestyle='--', label='Test MAE')
         axes[1].set_xlabel('Epoch')
         axes[1].set_ylabel('MAE')
         axes[1].set_title(f'{model_type} - MAE')
@@ -410,6 +414,17 @@ class FullGridSearchTuner:
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, f'{config_name}_history.png'), dpi=80)
         plt.close()
+
+    def _save_history(self, history, config_dir):
+        """Save training history to JSON for later plot regeneration."""
+        if hasattr(history, 'history'):
+            # Keras history object
+            data = {k: [float(v) for v in vals] for k, vals in history.history.items()}
+        else:
+            # Dict (e.g. Informer)
+            data = history
+        with open(os.path.join(config_dir, 'history.json'), 'w') as f:
+            json.dump(data, f)
 
     def _save_results(self, results, results_file):
         """Save results to JSON file."""
@@ -453,7 +468,8 @@ class FullGridSearchTuner:
                     'epochs_trained': len(history.history['loss'])
                 }
 
-                self.save_training_plot(history, config['name'], 'LSTM', config_dir)
+                self.save_training_plot(history, config['name'], 'LSTM', config_dir, metrics)
+                self._save_history(history, config_dir)
                 model.save(os.path.join(config_dir, 'model.h5'))
 
                 with open(os.path.join(config_dir, 'results.json'), 'w') as f:
@@ -512,7 +528,8 @@ class FullGridSearchTuner:
                     'epochs_trained': len(history.history['loss'])
                 }
 
-                self.save_training_plot(history, config['name'], 'CNN', config_dir)
+                self.save_training_plot(history, config['name'], 'CNN', config_dir, metrics)
+                self._save_history(history, config_dir)
                 model.save(os.path.join(config_dir, 'model.h5'))
 
                 with open(os.path.join(config_dir, 'results.json'), 'w') as f:
@@ -571,7 +588,8 @@ class FullGridSearchTuner:
                     'epochs_trained': len(history.history['loss'])
                 }
 
-                self.save_training_plot(history, config['name'], 'GRU', config_dir)
+                self.save_training_plot(history, config['name'], 'GRU', config_dir, metrics)
+                self._save_history(history, config_dir)
                 model.save(os.path.join(config_dir, 'model.h5'))
 
                 with open(os.path.join(config_dir, 'results.json'), 'w') as f:
@@ -634,6 +652,7 @@ class FullGridSearchTuner:
                 # Save training plot
                 fig, ax = plt.subplots(1, 1, figsize=(8, 4))
                 ax.plot(history['train_loss'], label='Train Loss')
+                ax.axhline(y=metrics['test_loss'], color='green', linestyle='--', label='Test Loss')
                 ax.set_xlabel('Epoch')
                 ax.set_ylabel('Loss (MSE)')
                 ax.set_title(f'INFORMER - {config["name"]}')
@@ -643,7 +662,8 @@ class FullGridSearchTuner:
                 plt.savefig(os.path.join(config_dir, f'{config["name"]}_history.png'), dpi=80)
                 plt.close()
 
-                # Save model
+                # Save history and model
+                self._save_history(history, config_dir)
                 import torch
                 torch.save(model.state_dict(), os.path.join(config_dir, 'model.pt'))
 
@@ -666,39 +686,23 @@ class FullGridSearchTuner:
             # Save after each config
             self._save_results(self.informer_results, os.path.join(self.informer_dir, 'all_results.json'))
 
+    def _find_best(self, results):
+        """Find best config from results by val_loss. Returns None if no valid results."""
+        valid = [r for r in results if 'metrics' in r]
+        if not valid:
+            return None, []
+        return min(valid, key=lambda x: x['metrics']['val_loss']), valid
+
     def find_best_configs(self):
         """Find and save the best configurations."""
         print("\n" + "=" * 70)
-        print("FINDING BEST CONFIGURATIONS")
+        print("FINDING BEST CONFIGURATIONS (by Val Loss)")
         print("=" * 70)
 
-        # Find best LSTM
-        valid_lstm = [r for r in self.lstm_results if 'metrics' in r]
-        if valid_lstm:
-            best_lstm = min(valid_lstm, key=lambda x: x['metrics']['val_loss'])
-        else:
-            best_lstm = None
-
-        # Find best CNN
-        valid_cnn = [r for r in self.cnn_results if 'metrics' in r]
-        if valid_cnn:
-            best_cnn = min(valid_cnn, key=lambda x: x['metrics']['val_loss'])
-        else:
-            best_cnn = None
-
-        # Find best GRU
-        valid_gru = [r for r in self.gru_results if 'metrics' in r]
-        if valid_gru:
-            best_gru = min(valid_gru, key=lambda x: x['metrics']['val_loss'])
-        else:
-            best_gru = None
-
-        # Find best Informer
-        valid_informer = [r for r in self.informer_results if 'metrics' in r]
-        if valid_informer:
-            best_informer = min(valid_informer, key=lambda x: x['metrics']['val_loss'])
-        else:
-            best_informer = None
+        best_lstm, valid_lstm = self._find_best(self.lstm_results)
+        best_cnn, valid_cnn = self._find_best(self.cnn_results)
+        best_gru, valid_gru = self._find_best(self.gru_results)
+        best_informer, valid_informer = self._find_best(self.informer_results)
 
         best_configs = {
             'timestamp': datetime.now().isoformat(),
@@ -708,145 +712,72 @@ class FullGridSearchTuner:
             'total_informer_configs': len(valid_informer),
         }
 
-        if best_lstm:
-            best_configs['best_lstm'] = {
-                'config_name': best_lstm['config_name'],
-                'config': best_lstm['config'],
-                'metrics': best_lstm['metrics'],
-                'training_time': best_lstm['training_time']
-            }
-            print("\n" + "-" * 70)
-            print("BEST LSTM CONFIGURATION:")
-            print("-" * 70)
-            print(f"  Name: {best_lstm['config_name']}")
-            print(f"  Dropout: {best_lstm['config']['dropout']}")
-            print(f"  Dense Units: {best_lstm['config']['dense_units']}")
-            print(f"  Learning Rate: {best_lstm['config']['lr']}")
-            print(f"  Batch Size: {best_lstm['config']['batch']}")
-            print(f"  Epochs: {best_lstm['config']['epochs']}")
-            print(f"  Val Loss: {best_lstm['metrics']['val_loss']:.6f}")
-            print(f"  Test Loss: {best_lstm['metrics']['test_loss']:.6f}")
-            print(f"  Test MAE: {best_lstm['metrics']['test_mae']:.6f}")
-            print(f"  Test RMSE: {best_lstm['metrics'].get('test_rmse', np.sqrt(best_lstm['metrics']['test_loss'])):.6f}")
+        models = [
+            ('LSTM', best_lstm),
+            ('CNN', best_cnn),
+            ('GRU', best_gru),
+            ('INFORMER', best_informer),
+        ]
 
-        if best_cnn:
-            best_configs['best_cnn'] = {
-                'config_name': best_cnn['config_name'],
-                'config': best_cnn['config'],
-                'metrics': best_cnn['metrics'],
-                'training_time': best_cnn['training_time']
+        for name, best in models:
+            if best is None:
+                continue
+            best_configs[f'best_{name.lower()}'] = {
+                'config_name': best['config_name'],
+                'config': best['config'],
+                'metrics': best['metrics'],
+                'training_time': best['training_time']
             }
-            print("\n" + "-" * 70)
-            print("BEST CNN CONFIGURATION:")
-            print("-" * 70)
-            print(f"  Name: {best_cnn['config_name']}")
-            print(f"  Kernel Size: {best_cnn['config']['kernel']}")
-            print(f"  Pool Size: {best_cnn['config']['pool']}")
-            print(f"  Dropout: {best_cnn['config']['dropout']}")
-            print(f"  Batch Size: {best_cnn['config']['batch']}")
-            print(f"  Epochs: {best_cnn['config']['epochs']}")
-            print(f"  Val Loss: {best_cnn['metrics']['val_loss']:.6f}")
-            print(f"  Test Loss: {best_cnn['metrics']['test_loss']:.6f}")
-            print(f"  Test MAE: {best_cnn['metrics']['test_mae']:.6f}")
-            print(f"  Test RMSE: {best_cnn['metrics'].get('test_rmse', np.sqrt(best_cnn['metrics']['test_loss'])):.6f}")
+            print(f"\n  BEST {name}: {best['config_name']}")
+            print(f"    Parameters: {', '.join(f'{k}={v}' for k, v in best['config'].items() if k != 'name')}")
+            print(f"    Val Loss:  {best['metrics']['val_loss']:.6f}  |  Val MAE:  {best['metrics']['val_mae']:.6f}")
+            print(f"    Test Loss: {best['metrics']['test_loss']:.6f}  |  Test MAE: {best['metrics']['test_mae']:.6f}")
 
-        if best_gru:
-            best_configs['best_gru'] = {
-                'config_name': best_gru['config_name'],
-                'config': best_gru['config'],
-                'metrics': best_gru['metrics'],
-                'training_time': best_gru['training_time']
-            }
-            print("\n" + "-" * 70)
-            print("BEST GRU CONFIGURATION:")
-            print("-" * 70)
-            print(f"  Name: {best_gru['config_name']}")
-            print(f"  Dropout: {best_gru['config']['dropout']}")
-            print(f"  Dense Units: {best_gru['config']['dense_units']}")
-            print(f"  Learning Rate: {best_gru['config']['lr']}")
-            print(f"  Batch Size: {best_gru['config']['batch']}")
-            print(f"  Epochs: {best_gru['config']['epochs']}")
-            print(f"  Val Loss: {best_gru['metrics']['val_loss']:.6f}")
-            print(f"  Test Loss: {best_gru['metrics']['test_loss']:.6f}")
-            print(f"  Test MAE: {best_gru['metrics']['test_mae']:.6f}")
-            print(f"  Test RMSE: {best_gru['metrics'].get('test_rmse', np.sqrt(best_gru['metrics']['test_loss'])):.6f}")
-
-        if best_informer:
-            best_configs['best_informer'] = {
-                'config_name': best_informer['config_name'],
-                'config': best_informer['config'],
-                'metrics': best_informer['metrics'],
-                'training_time': best_informer['training_time']
-            }
-            print("\n" + "-" * 70)
-            print("BEST INFORMER CONFIGURATION:")
-            print("-" * 70)
-            print(f"  Name: {best_informer['config_name']}")
-            print(f"  d_model: {best_informer['config']['d_model']}")
-            print(f"  n_heads: {best_informer['config']['n_heads']}")
-            print(f"  Dropout: {best_informer['config']['dropout']}")
-            print(f"  Learning Rate: {best_informer['config']['lr']}")
-            print(f"  Batch Size: {best_informer['config']['batch']}")
-            print(f"  Epochs: {best_informer['config']['epochs']}")
-            print(f"  Val Loss: {best_informer['metrics']['val_loss']:.6f}")
-            print(f"  Test Loss: {best_informer['metrics']['test_loss']:.6f}")
-            print(f"  Test MAE: {best_informer['metrics']['test_mae']:.6f}")
-            print(f"  Test RMSE: {best_informer['metrics'].get('test_rmse', np.sqrt(best_informer['metrics']['test_loss'])):.6f}")
+        # Summary table
+        print("\n" + "-" * 70)
+        print("BEST MODEL COMPARISON (selected by Val Loss):")
+        print("-" * 70)
+        print(f"{'Model':<12} {'Config':<40} {'ValLoss':<12} {'ValMAE':<12} {'TestMAE':<12}")
+        print("-" * 70)
+        for name, best in models:
+            if best is None:
+                continue
+            m = best['metrics']
+            print(f"{name:<12} {best['config_name']:<40} {m['val_loss']:<12.6f} {m['val_mae']:<12.6f} {m['test_mae']:<12.6f}")
 
         # Save best configs
-        with open(os.path.join(self.output_dir, 'best_configurations.json'), 'w') as f:
+        best_configs_path = os.path.join(self.output_dir, 'best_configurations.json')
+        with open(best_configs_path, 'w') as f:
             json.dump(best_configs, f, indent=2)
 
         return best_configs
 
+    def _print_top_table(self, results, model_name, top_n=3):
+        """Print top N results for a model type, sorted by Val Loss."""
+        valid = [r for r in results if 'metrics' in r]
+        if not valid:
+            return
+        sorted_results = sorted(valid, key=lambda x: x['metrics']['val_loss'])[:top_n]
+
+        print(f"\n{model_name} TOP {top_n} (sorted by Val Loss):")
+        print("-" * 115)
+        print(f"{'Rank':<5} {'Config':<35} {'ValLoss':<12} {'ValMAE':<12} {'TestMAE':<12} {'Time':<10}")
+        print("-" * 115)
+
+        for i, r in enumerate(sorted_results, 1):
+            m = r['metrics']
+            print(f"{i:<5} {r['config_name']:<35} {m['val_loss']:<12.6f} {m['val_mae']:<12.6f} {m['test_mae']:<12.6f} {r['training_time']:<10.1f}s")
+
     def create_comparison_table(self):
         """Create a comparison table of all results."""
         print("\n" + "=" * 70)
-        print("TOP 10 RESULTS PER MODEL")
+        print("TOP 3 RESULTS PER MODEL")
         print("=" * 70)
 
-        # LSTM Top 10
-        valid_lstm = [r for r in self.lstm_results if 'metrics' in r]
-        sorted_lstm = sorted(valid_lstm, key=lambda x: x['metrics']['val_loss'])[:10]
-
-        print("\nLSTM TOP 10 (sorted by Val Loss):")
-        print("-" * 115)
-        print(f"{'Rank':<5} {'Config':<35} {'ValLoss':<12} {'TestMAE':<12} {'TestRMSE':<12} {'Time':<10}")
-        print("-" * 115)
-
-        for i, r in enumerate(sorted_lstm, 1):
-            m = r['metrics']
-            rmse = m.get('test_rmse', np.sqrt(m['test_loss']))
-            print(f"{i:<5} {r['config_name']:<35} {m['val_loss']:<12.6f} {m['test_mae']:<12.6f} {rmse:<12.6f} {r['training_time']:<10.1f}s")
-
-        # CNN Top 10
-        valid_cnn = [r for r in self.cnn_results if 'metrics' in r]
-        sorted_cnn = sorted(valid_cnn, key=lambda x: x['metrics']['val_loss'])[:10]
-
-        print("\nCNN TOP 10 (sorted by Val Loss):")
-        print("-" * 115)
-        print(f"{'Rank':<5} {'Config':<35} {'ValLoss':<12} {'TestMAE':<12} {'TestRMSE':<12} {'Time':<10}")
-        print("-" * 115)
-
-        for i, r in enumerate(sorted_cnn, 1):
-            m = r['metrics']
-            rmse = m.get('test_rmse', np.sqrt(m['test_loss']))
-            print(f"{i:<5} {r['config_name']:<35} {m['val_loss']:<12.6f} {m['test_mae']:<12.6f} {rmse:<12.6f} {r['training_time']:<10.1f}s")
-
-        # Informer Top 10
-        valid_informer = [r for r in self.informer_results if 'metrics' in r]
-        sorted_informer = sorted(valid_informer, key=lambda x: x['metrics']['val_loss'])[:10]
-
-        if sorted_informer:
-            print("\nINFORMER TOP 10 (sorted by Val Loss):")
-            print("-" * 115)
-            print(f"{'Rank':<5} {'Config':<35} {'ValLoss':<12} {'TestMAE':<12} {'TestRMSE':<12} {'Time':<10}")
-            print("-" * 115)
-
-            for i, r in enumerate(sorted_informer, 1):
-                m = r['metrics']
-                rmse = m.get('test_rmse', np.sqrt(m['test_loss']))
-                print(f"{i:<5} {r['config_name']:<35} {m['val_loss']:<12.6f} {m['test_mae']:<12.6f} {rmse:<12.6f} {r['training_time']:<10.1f}s")
+        self._print_top_table(self.lstm_results, 'LSTM')
+        self._print_top_table(self.cnn_results, 'CNN')
+        self._print_top_table(self.gru_results, 'GRU')
+        self._print_top_table(self.informer_results, 'INFORMER')
 
     def analyze_hyperparameters(self):
         """Analyze which hyperparameters perform best on average."""
@@ -1029,6 +960,7 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
             # Save training plot
             fig, ax = plt.subplots(1, 1, figsize=(8, 4))
             ax.plot(history['train_loss'], label='Train Loss')
+            ax.axhline(y=metrics['test_loss'], color='green', linestyle='--', label='Test Loss')
             ax.set_xlabel('Epoch')
             ax.set_ylabel('Loss (MSE)')
             ax.set_title(f'INFORMER - {config["name"]}')
@@ -1038,6 +970,8 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
             plt.savefig(os.path.join(config_dir, f'{config["name"]}_history.png'), dpi=80)
             plt.close()
 
+            # Save history and model
+            tuner._save_history(history, config_dir)
             import torch
             torch.save(model.state_dict(), os.path.join(config_dir, 'model.pt'))
         else:
@@ -1060,7 +994,8 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
                 'epochs_trained': len(history.history['loss'])
             }
 
-            tuner.save_training_plot(history, config['name'], model_type.upper(), config_dir)
+            tuner.save_training_plot(history, config['name'], model_type.upper(), config_dir, metrics)
+            tuner._save_history(history, config_dir)
             model.save(os.path.join(config_dir, 'model.h5'))
 
         with open(os.path.join(config_dir, 'results.json'), 'w') as f:

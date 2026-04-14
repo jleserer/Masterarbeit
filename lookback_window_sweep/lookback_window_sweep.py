@@ -188,7 +188,7 @@ def train_and_evaluate_informer(model, X_train, y_train, X_test, y_test, config,
 
 
 def evaluate_lookback_windows(data_path, output_dir):
-    """Evaluate both models for different lookback windows L=1..60."""
+    """Evaluate models for different lookback windows L=1..60."""
     print("=" * 70)
     print("COMPREHENSIVE LOOKBACK WINDOW (L) EVALUATION")
     print("=" * 70)

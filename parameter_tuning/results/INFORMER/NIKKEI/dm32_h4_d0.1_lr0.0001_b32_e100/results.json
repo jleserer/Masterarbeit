@@ -9,17 +9,5 @@
     "batch": 32,
     "epochs": 100
   },
-  "metrics": {
-    "train_loss": 0.00025011561228893697,
-    "train_mae": 0.011473551392555237,
-    "train_rmse": 0.015815043859848665,
-    "val_loss": 0.00020324290380813181,
-    "val_mae": 0.010112551972270012,
-    "val_rmse": 0.014256328552896493,
-    "test_loss": 0.00019243857241235673,
-    "test_mae": 0.009818866848945618,
-    "test_rmse": 0.013872223052285337
-  },
-  "training_time": 1537.5498962402344,
-  "epochs_trained": 100
+  "error": "[enforce fail at alloc_cpu.cpp:121] data. DefaultCPUAllocator: not enough memory: you tried to allocate 6144000 bytes."
 }
