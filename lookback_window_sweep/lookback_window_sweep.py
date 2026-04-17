@@ -801,10 +801,10 @@ def run_single_lookback(data_path, output_dir, L):
     np.random.seed(42)
     tf.random.set_seed(42)
     os.environ['PYTHONHASHSEED'] = '42'
-    try:
-        tf.config.experimental.enable_op_determinism()
-    except Exception:
-        pass
+    # Hinweis: enable_op_determinism() wurde entfernt — verursacht in multi-process-Sweep
+    # mit 32 parallelen TF-Instanzen einen globalen Lock und haengt die Prozesse ein.
+    # Seeds + set_intra_op_parallelism_threads genuegen fuer die Reproduzierbarkeit
+    # auf CPU in diesem Szenario.
 
     preparator = DataPreparator(data_path)
     train_data, val_data, test_data = preparator.load_and_prepare()
@@ -880,16 +880,11 @@ def run_single_lookback(data_path, output_dir, L):
         del gru_model
         tf.keras.backend.clear_session()
 
-        # Informer (PyTorch)
+        # Informer (PyTorch) — Seeds gesetzt; globale Deterministik deaktiviert
+        # (use_deterministic_algorithms haengt im multi-process-Betrieb).
         import torch
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        try:
-            torch.use_deterministic_algorithms(True, warn_only=True)
-        except Exception:
-            pass
         informer_model = build_informer_sweep_model(L, n_features, BEST_INFORMER_CONFIG)
         inf_val_mae, inf_val_loss, inf_test_mae, inf_test_loss = train_and_evaluate_informer(
             informer_model, X_train, y_train, X_val, y_val, X_test, y_test,

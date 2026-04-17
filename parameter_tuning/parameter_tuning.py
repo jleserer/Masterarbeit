@@ -896,14 +896,13 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
     np.random.seed(42)
     os.environ['PYTHONHASHSEED'] = '42'
 
+    # Hinweis: enable_op_determinism() / use_deterministic_algorithms() wurden bewusst
+    # NICHT aktiviert — sie verursachen in multi-process-Umgebungen (32 Worker) einen
+    # globalen Lock und haengen die Prozesse. Seeds allein reichen fuer
+    # Reproduzierbarkeit auf CPU in diesem Setup.
     if model_type != 'informer':
         import tensorflow as tf
         tf.random.set_seed(42)
-        try:
-            tf.config.experimental.enable_op_determinism()
-        except Exception:
-            pass
-        # Limit TF threads to avoid oversubscription when running in parallel
         n_threads = int(os.environ.get('TF_WORKER_THREADS', '4'))
         tf.config.threading.set_intra_op_parallelism_threads(n_threads)
         tf.config.threading.set_inter_op_parallelism_threads(2)
@@ -911,12 +910,6 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
         import torch
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        try:
-            torch.use_deterministic_algorithms(True, warn_only=True)
-        except Exception:
-            pass
         torch.set_num_threads(int(os.environ.get('TF_WORKER_THREADS', '4')))
 
     tuner = FullGridSearchTuner(data_path, output_dir=output_dir, index_name=index_name)
