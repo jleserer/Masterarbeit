@@ -33,6 +33,7 @@ import argparse
 import math
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from datetime import datetime
 
 # Paths
@@ -378,13 +379,33 @@ def run_parallel_sweep(max_workers, tf_threads):
 
     if pending:
         start = time.time()
-        tasks = [(idx, L, best_configs_path, tf_threads) for idx, L in pending]
 
+        # Resilient dispatch: bei Pool-Tod (BrokenProcessPool durch OS-Kill eines Workers)
+        # wird der Pool neu aufgebaut und die ausstehenden Tasks wieder aufgenommen.
+        # Einzelne Worker-Crashes reissen damit nicht den gesamten Sweep in den Abgrund.
         results = []
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(dispatch_single_lookback, t) for t in tasks]
-            for future in as_completed(futures):
-                results.append(future.result())
+        remaining = list(pending)
+        max_retries = 5
+        retry = 0
+        while remaining and retry < max_retries:
+            tasks = [(idx, L, best_configs_path, tf_threads) for idx, L in remaining]
+            try:
+                with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_task = {executor.submit(dispatch_single_lookback, t): t for t in tasks}
+                    for future in as_completed(future_to_task):
+                        try:
+                            results.append(future.result())
+                        except Exception as e:
+                            t = future_to_task[future]
+                            print(f"    WORKER EXCEPTION {t[0]} L={t[1]}: {e}")
+            except BrokenProcessPool as e:
+                print(f"\n  WARN: ProcessPool abgestuerzt ({e}). Starte neu mit verbleibenden Tasks.")
+            finally:
+                completed_now = get_completed_lookbacks()
+                remaining = [(idx, L) for idx, L in pending if (idx, L) not in completed_now]
+                retry += 1
+                if remaining:
+                    print(f"  Retry {retry}/{max_retries}: {len(remaining)} ausstehend.")
 
         elapsed = time.time() - start
         failed = [r for r in results if r[2] != 0]
@@ -394,6 +415,8 @@ def run_parallel_sweep(max_workers, tf_threads):
         if failed:
             for name, L, _, _ in failed[:10]:
                 print(f"    FEHLER: {name} L={L} (siehe logs/sweep_{name}_L{L:02d}.log)")
+        if remaining:
+            print(f"  ACHTUNG: {len(remaining)} Tasks auch nach {max_retries} Retries offen.")
     else:
         print("  Alle Tasks bereits abgeschlossen!")
 
