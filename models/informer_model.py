@@ -680,8 +680,15 @@ def build_informer(lookback_window, n_features, config):
     return model
 
 
-def train_informer(model, X_train, y_train, config, lookback_window, verbose=0):
+def train_informer(model, X_train, y_train, config, lookback_window, verbose=0,
+                   X_val=None, y_val=None):
     """Train an Informer model. Returns training history dict.
+
+    Semantik der Val-Metriken:
+      - Wenn X_val/y_val uebergeben: val_loss/val_mae werden nach jeder Epoche
+        berechnet (analog zu Keras model.fit(..., validation_data=...)).
+      - Ohne X_val/y_val: history enthaelt nur train_loss pro Epoche;
+        Val-Metriken muessen dann separat via evaluate_informer() berechnet werden.
 
     Args:
         model: Informer nn.Module
@@ -690,9 +697,10 @@ def train_informer(model, X_train, y_train, config, lookback_window, verbose=0):
         config: Dict with 'lr', 'batch', 'epochs'
         lookback_window: L (for decoder input construction)
         verbose: 0=silent, 1=epoch logs
+        X_val, y_val: Optional Val-Set fuer per-Epoche Val-Loss
 
     Returns:
-        dict with 'train_loss' list
+        dict with 'train_loss' (+ optional 'val_loss', 'val_mae', 'mae') pro Epoche
     """
     device = next(model.parameters()).device
     label_len = lookback_window // 2
@@ -706,14 +714,18 @@ def train_informer(model, X_train, y_train, config, lookback_window, verbose=0):
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
 
-    history = {'train_loss': []}
+    has_val = X_val is not None and y_val is not None
+    history = {'train_loss': [], 'mae': []}
+    if has_val:
+        history['val_loss'] = []
+        history['val_mae'] = []
 
     for epoch in range(config['epochs']):
         model.train()
         epoch_losses = []
+        epoch_maes = []
         for X_batch, y_batch in loader:
             optimizer.zero_grad()
-            # Decoder input: last label_len steps + zero padding
             dec_start = X_batch[:, -label_len:, :]
             pred_padding = torch.zeros(X_batch.size(0), 1, X_batch.size(2), device=device)
             dec_input = torch.cat([dec_start, pred_padding], dim=1)
@@ -724,12 +736,23 @@ def train_informer(model, X_train, y_train, config, lookback_window, verbose=0):
             loss.backward()
             optimizer.step()
             epoch_losses.append(loss.item())
+            epoch_maes.append(torch.mean(torch.abs(pred.detach() - y_batch)).item())
 
-        avg_loss = np.mean(epoch_losses)
+        avg_loss = float(np.mean(epoch_losses))
+        avg_mae = float(np.mean(epoch_maes))
         history['train_loss'].append(avg_loss)
+        history['mae'].append(avg_mae)
+
+        if has_val:
+            val_loss, val_mae = evaluate_informer(model, X_val, y_val, lookback_window)
+            history['val_loss'].append(float(val_loss))
+            history['val_mae'].append(float(val_mae))
 
         if verbose and ((epoch + 1) % 10 == 0):
-            print(f"  Epoch {epoch+1}/{config['epochs']}: Loss={avg_loss:.6f}")
+            msg = f"  Epoch {epoch+1}/{config['epochs']}: Loss={avg_loss:.6f}"
+            if has_val:
+                msg += f", Val Loss={history['val_loss'][-1]:.6f}"
+            print(msg)
 
     return history
 

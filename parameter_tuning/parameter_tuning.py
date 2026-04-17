@@ -31,6 +31,11 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, GRU, Dense, Dropout, Conv1D, MaxPooling1D, Flatten
 from tensorflow.keras.optimizers import Adam
 from data_preparation import DataPreparator, create_sequences
+from config import (
+    INDICES, LOOKBACK_WINDOW, LSTM_UNITS, GRU_UNITS,
+    CONV_FILTERS, DENSE_UNITS_CNN, LEARNING_RATE_CNN,
+    INFORMER_E_LAYERS, INFORMER_D_LAYERS, INFORMER_FACTOR,
+)
 
 
 # =============================================================================
@@ -66,30 +71,7 @@ INFORMER_LEARNING_RATE = [0.0001, 0.001]
 INFORMER_BATCH_SIZE = [16, 32]
 INFORMER_EPOCHS = [50, 100]
 
-# Fixed Informer architecture
-INFORMER_E_LAYERS = 2
-INFORMER_D_LAYERS = 1
-INFORMER_FACTOR = 5
-
-# Fixed parameters
-LOOKBACK_WINDOW = 60
-LSTM_UNITS = [128, 64]
-GRU_UNITS = [128, 64]
-CONV_FILTERS = [64, 128, 256]
-DENSE_UNITS_CNN = 64
-LEARNING_RATE_CNN = 0.001
-
-# All available indices
-INDICES = {
-    'SP500':     'SP500_historical_data.csv',
-    'DAX':       'DAX_historical_data.csv',
-    'NASDAQ':    'NASDAQ_historical_data.csv',
-    'FTSE100':   'FTSE100_historical_data.csv',
-    'HANG_SENG': 'HANG_SENG_historical_data.csv',
-    'NIKKEI':    'NIKKEI_historical_data.csv',
-    '10Y_Bond':  '10-Year Bond_historical_data.csv',
-    '30Y_Bond':  '30 Year Bond_historical_data.csv',
-}
+# Model-Architektur-Konstanten, INDICES und LOOKBACK_WINDOW aus config.py (oben importiert)
 
 
 def generate_lstm_configs():
@@ -329,10 +311,16 @@ class FullGridSearchTuner:
         return model
 
     def train_informer_model(self, model, config, verbose=0):
-        """Train Informer model with PyTorch training loop. Returns history dict."""
+        """Train Informer model with PyTorch training loop. Returns history dict.
+
+        Uebergibt X_val/y_val fuer per-Epoche Val-Loss (analog zu Keras
+        validation_data), damit die History direkt mit Keras-History
+        vergleichbar ist.
+        """
         from models.informer_model import train_informer
         history = train_informer(model, self.X_train, self.y_train,
-                                 config, LOOKBACK_WINDOW, verbose=verbose)
+                                 config, LOOKBACK_WINDOW, verbose=verbose,
+                                 X_val=self.X_val, y_val=self.y_val)
         return history
 
     def evaluate_informer_model(self, model):
@@ -903,14 +891,32 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
     Train and evaluate a single config. Designed for parallel dispatch.
     Each call is independent: loads data, builds model, trains, saves results.
     """
+    import random
+    random.seed(42)
+    np.random.seed(42)
+    os.environ['PYTHONHASHSEED'] = '42'
+
     if model_type != 'informer':
         import tensorflow as tf
+        tf.random.set_seed(42)
+        try:
+            tf.config.experimental.enable_op_determinism()
+        except Exception:
+            pass
         # Limit TF threads to avoid oversubscription when running in parallel
         n_threads = int(os.environ.get('TF_WORKER_THREADS', '4'))
         tf.config.threading.set_intra_op_parallelism_threads(n_threads)
         tf.config.threading.set_inter_op_parallelism_threads(2)
     else:
         import torch
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        try:
+            torch.use_deterministic_algorithms(True, warn_only=True)
+        except Exception:
+            pass
         torch.set_num_threads(int(os.environ.get('TF_WORKER_THREADS', '4')))
 
     tuner = FullGridSearchTuner(data_path, output_dir=output_dir, index_name=index_name)
@@ -1020,6 +1026,22 @@ def run_single_config(data_path, model_type, config_name, output_dir=os.path.joi
 
 if __name__ == "__main__":
     import argparse
+    import random
+    random.seed(42)
+    np.random.seed(42)
+    os.environ['PYTHONHASHSEED'] = '42'
+    try:
+        import tensorflow as _tf
+        _tf.random.set_seed(42)
+    except Exception:
+        pass
+    try:
+        import torch as _torch
+        _torch.manual_seed(42)
+        _torch.cuda.manual_seed_all(42)
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description='Hyperparameter Grid Search')
     parser.add_argument('--model', choices=['lstm', 'cnn', 'gru', 'informer', 'all'], default='all',
                         help='Which model type to tune (default: all)')

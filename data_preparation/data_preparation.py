@@ -26,16 +26,18 @@ class DataPreparator:
     time-additive, and have a similar distribution across all splits.
     """
 
-    def __init__(self, data_path, target_columns=None, start_date=None):
+    def __init__(self, data_path, target_columns=None):
         """
         Args:
             data_path: Path to CSV file
             target_columns: List of columns to use (default: ['Close'])
-            start_date: Optional filter to only use data from this date onwards (e.g. '2015-01-01')
+
+        Hinweis: Der gemeinsame Start-Cutoff wird durch den Preprocessing-Schritt
+        (stockData/get-data/normalize_data.py) in den CSVs selbst sichergestellt.
+        Ein separater start_date-Parameter wird hier nicht mehr unterstuetzt.
         """
         self.data_path = data_path
         self.target_columns = target_columns or ['Close']
-        self.start_date = start_date
         self.data = None
         self.train_data = None
         self.val_data = None
@@ -46,15 +48,8 @@ class DataPreparator:
 
     def load_and_prepare(self):
         """Load CSV, compute returns, and split 65%-15%-20%."""
-        # Load data
         self.data = pd.read_csv(self.data_path)
         print(f"Loaded data shape: {self.data.shape}")
-
-        # Filter by start date if specified (date is in first column)
-        if self.start_date is not None:
-            dates = pd.to_datetime(self.data.iloc[:, 0], errors='coerce')
-            self.data = self.data[dates >= pd.Timestamp(self.start_date)].reset_index(drop=True)
-            print(f"Filtered to data from {self.start_date}: {self.data.shape}")
 
         # Select target columns
         selected_data = self.data[self.target_columns].apply(pd.to_numeric, errors='coerce')

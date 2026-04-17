@@ -141,16 +141,8 @@ def verify_index(index_name, filename):
 
 
 def main():
-    indices = {
-        'SP500':     'SP500_historical_data.csv',
-        'DAX':       'DAX_historical_data.csv',
-        'NASDAQ':    'NASDAQ_historical_data.csv',
-        'FTSE100':   'FTSE100_historical_data.csv',
-        'HANG_SENG': 'HANG_SENG_historical_data.csv',
-        'NIKKEI':    'NIKKEI_historical_data.csv',
-        '10Y_Bond':  '10-Year Bond_historical_data.csv',
-        '30Y_Bond':  '30 Year Bond_historical_data.csv',
-    }
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from config import INDICES as indices
 
     print("=" * 70)
     print("QUICK VERIFICATION: Returns Transformation (All 8 Indices)")

@@ -33,6 +33,10 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, GRU, Dense, Dropout, Conv1D, MaxPooling1D, Flatten, Input
 from tensorflow.keras.optimizers import Adam
 from data_preparation import DataPreparator, create_sequences
+from config import (
+    INDICES as CFG_INDICES,
+    LSTM_UNITS, GRU_UNITS, CONV_FILTERS, DENSE_UNITS_CNN,
+)
 
 
 # =============================================================================
@@ -79,11 +83,7 @@ BEST_INFORMER_CONFIG = {
 # Lookback windows to test: L = 1..60
 LOOKBACK_WINDOWS = list(range(1, 61))
 
-# Fixed LSTM/CNN/GRU architecture parameters
-LSTM_UNITS = [128, 64]
-GRU_UNITS = [128, 64]
-CONV_FILTERS = [64, 128, 256]
-DENSE_UNITS_CNN = 64
+# LSTM_UNITS, GRU_UNITS, CONV_FILTERS, DENSE_UNITS_CNN aus config.py (oben importiert)
 
 
 def build_lstm_model(lookback_window, n_features, config):
@@ -153,10 +153,8 @@ def build_gru_model(lookback_window, n_features, config):
     return model
 
 
-def train_and_evaluate(model, X_train, y_train, X_test, y_test, config):
-    """Train model and return test MAE."""
-    # With percentage returns, val data has a similar distribution to training data.
-    # Fixed epochs ensure fair comparison across all L values.
+def train_and_evaluate(model, X_train, y_train, X_val, y_val, X_test, y_test, config):
+    """Train model and return val/test metrics. Val drives L-selection, test is reported."""
     model.fit(
         X_train, y_train,
         epochs=config['epochs'],
@@ -164,10 +162,10 @@ def train_and_evaluate(model, X_train, y_train, X_test, y_test, config):
         verbose=0
     )
 
-    # Evaluate on test set
+    val_loss, val_mae = model.evaluate(X_val, y_val, verbose=0)
     test_loss, test_mae = model.evaluate(X_test, y_test, verbose=0)
 
-    return test_mae, test_loss
+    return val_mae, val_loss, test_mae, test_loss
 
 
 def build_informer_sweep_model(lookback_window, n_features, config):
@@ -177,14 +175,15 @@ def build_informer_sweep_model(lookback_window, n_features, config):
     return build_informer(lookback_window, n_features, informer_config)
 
 
-def train_and_evaluate_informer(model, X_train, y_train, X_test, y_test, config, lookback_window):
-    """Train and evaluate Informer model. Returns (test_mae, test_loss)."""
+def train_and_evaluate_informer(model, X_train, y_train, X_val, y_val, X_test, y_test, config, lookback_window):
+    """Train and evaluate Informer. Returns (val_mae, val_loss, test_mae, test_loss)."""
     from models.informer_model import train_informer, evaluate_informer
 
     train_informer(model, X_train, y_train, config, lookback_window, verbose=0)
+    val_loss, val_mae = evaluate_informer(model, X_val, y_val, lookback_window)
     test_loss, test_mae = evaluate_informer(model, X_test, y_test, lookback_window)
 
-    return test_mae, test_loss
+    return val_mae, val_loss, test_mae, test_loss
 
 
 def evaluate_lookback_windows(data_path, output_dir):
@@ -207,100 +206,86 @@ def evaluate_lookback_windows(data_path, output_dir):
 
     results = {
         'lookback_windows': LOOKBACK_WINDOWS,
-        'lstm_mae': [],
-        'cnn_mae': [],
-        'gru_mae': [],
-        'informer_mae': [],
-        'lstm_loss': [],
-        'cnn_loss': [],
-        'gru_loss': [],
-        'informer_loss': [],
-        'lstm_rmse': [],
-        'cnn_rmse': [],
-        'gru_rmse': [],
-        'informer_rmse': []
     }
+    for m in ['lstm', 'cnn', 'gru', 'informer']:
+        for metric in ['mae', 'loss', 'rmse']:
+            results[f'{m}_{metric}'] = []          # legacy = test
+            results[f'{m}_val_{metric}'] = []
+            results[f'{m}_test_{metric}'] = []
 
     # Evaluate each lookback window
     for idx, L in enumerate(LOOKBACK_WINDOWS, 1):
         print(f"\r[{idx}/{len(LOOKBACK_WINDOWS)}] Testing L = {L:3d}...", end=" ", flush=True)
 
         try:
-            # Create sequences
             X_train, y_train = create_sequences(train_data, L)
+            X_val, y_val = create_sequences(val_data, L)
             X_test, y_test = create_sequences(test_data, L)
 
             n_features = X_train.shape[2]
 
-            # Reset seeds before each L to ensure fair comparison
             np.random.seed(42)
             tf.random.set_seed(42)
 
             # LSTM
             lstm_model = build_lstm_model(L, n_features, BEST_LSTM_CONFIG)
-            lstm_mae, lstm_loss = train_and_evaluate(
-                lstm_model, X_train, y_train, X_test, y_test,
+            lstm_val_mae, lstm_val_loss, lstm_test_mae, lstm_test_loss = train_and_evaluate(
+                lstm_model, X_train, y_train, X_val, y_val, X_test, y_test,
                 BEST_LSTM_CONFIG
             )
-            results['lstm_mae'].append(lstm_mae)
-            results['lstm_loss'].append(lstm_loss)
-            results['lstm_rmse'].append(np.sqrt(lstm_loss))
+            results['lstm_val_mae'].append(lstm_val_mae); results['lstm_val_loss'].append(lstm_val_loss); results['lstm_val_rmse'].append(np.sqrt(lstm_val_loss))
+            results['lstm_test_mae'].append(lstm_test_mae); results['lstm_test_loss'].append(lstm_test_loss); results['lstm_test_rmse'].append(np.sqrt(lstm_test_loss))
+            results['lstm_mae'].append(lstm_test_mae); results['lstm_loss'].append(lstm_test_loss); results['lstm_rmse'].append(np.sqrt(lstm_test_loss))
 
             # CNN
             cnn_model = build_cnn_model(L, n_features, BEST_CNN_CONFIG)
-            cnn_mae, cnn_loss = train_and_evaluate(
-                cnn_model, X_train, y_train, X_test, y_test,
+            cnn_val_mae, cnn_val_loss, cnn_test_mae, cnn_test_loss = train_and_evaluate(
+                cnn_model, X_train, y_train, X_val, y_val, X_test, y_test,
                 BEST_CNN_CONFIG
             )
-            results['cnn_mae'].append(cnn_mae)
-            results['cnn_loss'].append(cnn_loss)
-            results['cnn_rmse'].append(np.sqrt(cnn_loss))
+            results['cnn_val_mae'].append(cnn_val_mae); results['cnn_val_loss'].append(cnn_val_loss); results['cnn_val_rmse'].append(np.sqrt(cnn_val_loss))
+            results['cnn_test_mae'].append(cnn_test_mae); results['cnn_test_loss'].append(cnn_test_loss); results['cnn_test_rmse'].append(np.sqrt(cnn_test_loss))
+            results['cnn_mae'].append(cnn_test_mae); results['cnn_loss'].append(cnn_test_loss); results['cnn_rmse'].append(np.sqrt(cnn_test_loss))
 
             # GRU
             gru_model = build_gru_model(L, n_features, BEST_GRU_CONFIG)
-            gru_mae, gru_loss = train_and_evaluate(
-                gru_model, X_train, y_train, X_test, y_test,
+            gru_val_mae, gru_val_loss, gru_test_mae, gru_test_loss = train_and_evaluate(
+                gru_model, X_train, y_train, X_val, y_val, X_test, y_test,
                 BEST_GRU_CONFIG
             )
-            results['gru_mae'].append(gru_mae)
-            results['gru_loss'].append(gru_loss)
-            results['gru_rmse'].append(np.sqrt(gru_loss))
+            results['gru_val_mae'].append(gru_val_mae); results['gru_val_loss'].append(gru_val_loss); results['gru_val_rmse'].append(np.sqrt(gru_val_loss))
+            results['gru_test_mae'].append(gru_test_mae); results['gru_test_loss'].append(gru_test_loss); results['gru_test_rmse'].append(np.sqrt(gru_test_loss))
+            results['gru_mae'].append(gru_test_mae); results['gru_loss'].append(gru_test_loss); results['gru_rmse'].append(np.sqrt(gru_test_loss))
 
-            # Clear TF models to free memory
             del lstm_model, cnn_model, gru_model
             tf.keras.backend.clear_session()
 
             # Informer (PyTorch)
             import torch
             torch.manual_seed(42)
+            torch.cuda.manual_seed_all(42)
             informer_model = build_informer_sweep_model(L, n_features, BEST_INFORMER_CONFIG)
-            informer_mae, informer_loss = train_and_evaluate_informer(
-                informer_model, X_train, y_train, X_test, y_test,
+            inf_val_mae, inf_val_loss, inf_test_mae, inf_test_loss = train_and_evaluate_informer(
+                informer_model, X_train, y_train, X_val, y_val, X_test, y_test,
                 BEST_INFORMER_CONFIG, L
             )
-            results['informer_mae'].append(informer_mae)
-            results['informer_loss'].append(informer_loss)
-            results['informer_rmse'].append(np.sqrt(informer_loss))
+            results['informer_val_mae'].append(inf_val_mae); results['informer_val_loss'].append(inf_val_loss); results['informer_val_rmse'].append(np.sqrt(inf_val_loss))
+            results['informer_test_mae'].append(inf_test_mae); results['informer_test_loss'].append(inf_test_loss); results['informer_test_rmse'].append(np.sqrt(inf_test_loss))
+            results['informer_mae'].append(inf_test_mae); results['informer_loss'].append(inf_test_loss); results['informer_rmse'].append(np.sqrt(inf_test_loss))
             del informer_model
 
-            print(f"LSTM MAE: {lstm_mae:.6f}, CNN MAE: {cnn_mae:.6f}, "
-                  f"GRU MAE: {gru_mae:.6f}, Informer MAE: {informer_mae:.6f}")
+            print(f"L={L}: LSTM val/test MAE: {lstm_val_mae:.6f}/{lstm_test_mae:.6f}, "
+                  f"CNN: {cnn_val_mae:.6f}/{cnn_test_mae:.6f}, "
+                  f"GRU: {gru_val_mae:.6f}/{gru_test_mae:.6f}, "
+                  f"Inf: {inf_val_mae:.6f}/{inf_test_mae:.6f}")
 
         except Exception as e:
             print(f"ERROR: {e}")
-            results['lstm_mae'].append(np.nan)
-            results['cnn_mae'].append(np.nan)
-            results['gru_mae'].append(np.nan)
-            results['informer_mae'].append(np.nan)
-            results['lstm_loss'].append(np.nan)
-            results['cnn_loss'].append(np.nan)
-            results['gru_loss'].append(np.nan)
-            results['informer_loss'].append(np.nan)
-            results['lstm_rmse'].append(np.nan)
-            results['cnn_rmse'].append(np.nan)
-            results['gru_rmse'].append(np.nan)
-            results['informer_rmse'].append(np.nan)
-
+            for m in ['lstm', 'cnn', 'gru', 'informer']:
+                for metric in ['mae', 'loss', 'rmse']:
+                    results[f'{m}_{metric}'].append(np.nan)
+                    results[f'{m}_val_{metric}'].append(np.nan)
+                    results[f'{m}_test_{metric}'].append(np.nan)
     print("\n")
     return results, preparator, train_data, val_data, test_data
 
@@ -465,8 +450,12 @@ def generate_predictions_multiple_L(preparator, train_data, val_data, test_data,
     return predictions_data
 
 
-def plot_mae_vs_lookback(results, output_dir):
-    """Create MAE vs Lookback Window L plot."""
+def plot_mae_vs_lookback(results, output_dir, selection_mae=None):
+    """Create MAE vs Lookback Window L plot.
+
+    Kurven zeigen Test-MAE. Best-L wird auf selection_mae (Val-MAE, wenn
+    vorhanden) markiert, Annotation zeigt den zugehoerigen Test-MAE.
+    """
     print(f"\nPlotting MAE vs Lookback Window...")
 
     fig, ax = plt.subplots(figsize=(14, 7))
@@ -480,11 +469,14 @@ def plot_mae_vs_lookback(results, output_dir):
     ax.plot(results['lookback_windows'], results['informer_mae'],
             'm-D', linewidth=2.5, markersize=6, label='Informer', alpha=0.8)
 
-    # Find and mark best L values
-    best_lstm_idx = np.nanargmin(results['lstm_mae'])
-    best_cnn_idx = np.nanargmin(results['cnn_mae'])
-    best_gru_idx = np.nanargmin(results['gru_mae'])
-    best_informer_idx = np.nanargmin(results['informer_mae'])
+    sel = selection_mae or {
+        'lstm': results['lstm_mae'], 'cnn': results['cnn_mae'],
+        'gru': results['gru_mae'], 'informer': results['informer_mae']
+    }
+    best_lstm_idx = int(np.nanargmin(sel['lstm']))
+    best_cnn_idx = int(np.nanargmin(sel['cnn']))
+    best_gru_idx = int(np.nanargmin(sel['gru']))
+    best_informer_idx = int(np.nanargmin(sel['informer']))
 
     ax.plot(results['lookback_windows'][best_lstm_idx], results['lstm_mae'][best_lstm_idx],
             'bo', markersize=12, markeredgewidth=2, markerfacecolor='lightblue',
@@ -661,6 +653,31 @@ def save_results(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
             return _safe_list(rmse_key)
         return [float(np.sqrt(x)) if not np.isnan(x) else None for x in results.get(loss_key, [])]
 
+    def _sel_series(m):
+        # Val-MAE fuer Selection, Fallback Test-MAE (Legacy)
+        vals = results.get(f'{m}_val_mae', [])
+        if vals and not all(np.isnan(v) for v in vals):
+            return vals
+        return results.get(f'{m}_mae', [])
+
+    def _best_idx(m):
+        return int(np.nanargmin(_sel_series(m)))
+
+    def _best_entry(m, best_l, best_mae_at_l):
+        idx = _best_idx(m)
+        entry = {
+            'l_value': int(best_l),
+            'selection_metric': 'val_mae' if results.get(f'{m}_val_mae') and not all(np.isnan(v) for v in results[f'{m}_val_mae']) else 'test_mae_legacy',
+            'val_mae': float(results[f'{m}_val_mae'][idx]) if results.get(f'{m}_val_mae') and not np.isnan(results[f'{m}_val_mae'][idx]) else None,
+            'val_rmse': float(results[f'{m}_val_rmse'][idx]) if results.get(f'{m}_val_rmse') and not np.isnan(results[f'{m}_val_rmse'][idx]) else None,
+            'test_mae': float(results[f'{m}_test_mae'][idx]) if results.get(f'{m}_test_mae') and not np.isnan(results[f'{m}_test_mae'][idx]) else float(results[f'{m}_mae'][idx]),
+            'test_rmse': float(results[f'{m}_test_rmse'][idx]) if results.get(f'{m}_test_rmse') and not np.isnan(results[f'{m}_test_rmse'][idx]) else float(np.sqrt(results[f'{m}_loss'][idx])),
+            # 'mae'/'rmse' kept for backward compat = test metrics at selected L
+            'mae': float(results[f'{m}_mae'][idx]),
+            'rmse': float(np.sqrt(results[f'{m}_loss'][idx])),
+        }
+        return entry
+
     results_json = {
         'timestamp': datetime.now().isoformat(),
         'best_lstm_config': BEST_LSTM_CONFIG,
@@ -680,26 +697,26 @@ def save_results(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
         'cnn_rmse': _rmse_list('cnn_loss', 'cnn_rmse'),
         'gru_rmse': _rmse_list('gru_loss', 'gru_rmse'),
         'informer_rmse': _rmse_list('informer_loss', 'informer_rmse'),
-        'best_l_lstm': {
-            'l_value': int(best_lstm_l),
-            'mae': float(best_lstm_mae),
-            'rmse': float(np.sqrt(results['lstm_loss'][np.nanargmin(results['lstm_mae'])]))
-        },
-        'best_l_cnn': {
-            'l_value': int(best_cnn_l),
-            'mae': float(best_cnn_mae),
-            'rmse': float(np.sqrt(results['cnn_loss'][np.nanargmin(results['cnn_mae'])]))
-        },
-        'best_l_gru': {
-            'l_value': int(best_gru_l),
-            'mae': float(best_gru_mae),
-            'rmse': float(np.sqrt(results['gru_loss'][np.nanargmin(results['gru_mae'])]))
-        },
-        'best_l_informer': {
-            'l_value': int(best_informer_l),
-            'mae': float(best_informer_mae),
-            'rmse': float(np.sqrt(results['informer_loss'][np.nanargmin(results['informer_mae'])]))
-        }
+        'lstm_val_mae': _safe_list('lstm_val_mae'),
+        'cnn_val_mae':  _safe_list('cnn_val_mae'),
+        'gru_val_mae':  _safe_list('gru_val_mae'),
+        'informer_val_mae': _safe_list('informer_val_mae'),
+        'lstm_val_loss': _safe_list('lstm_val_loss'),
+        'cnn_val_loss':  _safe_list('cnn_val_loss'),
+        'gru_val_loss':  _safe_list('gru_val_loss'),
+        'informer_val_loss': _safe_list('informer_val_loss'),
+        'lstm_val_rmse': _safe_list('lstm_val_rmse'),
+        'cnn_val_rmse':  _safe_list('cnn_val_rmse'),
+        'gru_val_rmse':  _safe_list('gru_val_rmse'),
+        'informer_val_rmse': _safe_list('informer_val_rmse'),
+        'lstm_test_mae': _safe_list('lstm_test_mae'),
+        'cnn_test_mae':  _safe_list('cnn_test_mae'),
+        'gru_test_mae':  _safe_list('gru_test_mae'),
+        'informer_test_mae': _safe_list('informer_test_mae'),
+        'best_l_lstm': _best_entry('lstm', best_lstm_l, best_lstm_mae),
+        'best_l_cnn': _best_entry('cnn', best_cnn_l, best_cnn_mae),
+        'best_l_gru': _best_entry('gru', best_gru_l, best_gru_mae),
+        'best_l_informer': _best_entry('informer', best_informer_l, best_informer_mae),
     }
 
     results_path = os.path.join(output_dir, 'lookback_evaluation_results.json')
@@ -716,10 +733,16 @@ def print_summary(results, best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
     print("EVALUATION SUMMARY")
     print(f"{'='*70}")
 
-    best_lstm_rmse = np.sqrt(results['lstm_loss'][np.nanargmin(results['lstm_mae'])])
-    best_cnn_rmse = np.sqrt(results['cnn_loss'][np.nanargmin(results['cnn_mae'])])
-    best_gru_rmse = np.sqrt(results['gru_loss'][np.nanargmin(results['gru_mae'])])
-    best_informer_rmse = np.sqrt(results['informer_loss'][np.nanargmin(results['informer_mae'])])
+    def _sel_series(m):
+        vals = results.get(f'{m}_val_mae', [])
+        if vals and not all(np.isnan(v) for v in vals):
+            return vals
+        return results.get(f'{m}_mae', [])
+
+    best_lstm_rmse = np.sqrt(results['lstm_loss'][int(np.nanargmin(_sel_series('lstm')))])
+    best_cnn_rmse = np.sqrt(results['cnn_loss'][int(np.nanargmin(_sel_series('cnn')))])
+    best_gru_rmse = np.sqrt(results['gru_loss'][int(np.nanargmin(_sel_series('gru')))])
+    best_informer_rmse = np.sqrt(results['informer_loss'][int(np.nanargmin(_sel_series('informer')))])
 
     print(f"\nBest LSTM L: {best_lstm_l}")
     print(f"  Test MAE: {best_lstm_mae:.6f}, RMSE: {best_lstm_rmse:.6f}")
@@ -773,19 +796,33 @@ def run_single_lookback(data_path, output_dir, L):
     tf.config.threading.set_intra_op_parallelism_threads(n_threads)
     tf.config.threading.set_inter_op_parallelism_threads(2)
 
+    import random
+    random.seed(42)
     np.random.seed(42)
     tf.random.set_seed(42)
+    os.environ['PYTHONHASHSEED'] = '42'
+    try:
+        tf.config.experimental.enable_op_determinism()
+    except Exception:
+        pass
 
     preparator = DataPreparator(data_path)
-    train_data, _, test_data = preparator.load_and_prepare()
+    train_data, val_data, test_data = preparator.load_and_prepare()
 
-    result = {'L': L, 'lstm_mae': None, 'lstm_loss': None, 'lstm_rmse': None,
-              'cnn_mae': None, 'cnn_loss': None, 'cnn_rmse': None,
-              'gru_mae': None, 'gru_loss': None, 'gru_rmse': None,
-              'informer_mae': None, 'informer_loss': None, 'informer_rmse': None}
+    result = {'L': L}
+    for m in ['lstm', 'cnn', 'gru', 'informer']:
+        for s in ['val', 'test']:
+            result[f'{m}_{s}_mae'] = None
+            result[f'{m}_{s}_loss'] = None
+            result[f'{m}_{s}_rmse'] = None
+        # Legacy keys kept for backward compat with old consumers (= test metrics)
+        result[f'{m}_mae'] = None
+        result[f'{m}_loss'] = None
+        result[f'{m}_rmse'] = None
 
     try:
         X_train, y_train = create_sequences(train_data, L)
+        X_val, y_val = create_sequences(val_data, L)
         X_test, y_test = create_sequences(test_data, L)
         n_features = X_train.shape[2]
 
@@ -794,48 +831,79 @@ def run_single_lookback(data_path, output_dir, L):
 
         # LSTM
         lstm_model = build_lstm_model(L, n_features, BEST_LSTM_CONFIG)
-        lstm_mae, lstm_loss = train_and_evaluate(
-            lstm_model, X_train, y_train, X_test, y_test, BEST_LSTM_CONFIG
+        lstm_val_mae, lstm_val_loss, lstm_test_mae, lstm_test_loss = train_and_evaluate(
+            lstm_model, X_train, y_train, X_val, y_val, X_test, y_test, BEST_LSTM_CONFIG
         )
-        result['lstm_mae'] = float(lstm_mae)
-        result['lstm_loss'] = float(lstm_loss)
-        result['lstm_rmse'] = float(np.sqrt(lstm_loss))
+        result['lstm_val_mae'] = float(lstm_val_mae)
+        result['lstm_val_loss'] = float(lstm_val_loss)
+        result['lstm_val_rmse'] = float(np.sqrt(lstm_val_loss))
+        result['lstm_test_mae'] = float(lstm_test_mae)
+        result['lstm_test_loss'] = float(lstm_test_loss)
+        result['lstm_test_rmse'] = float(np.sqrt(lstm_test_loss))
+        result['lstm_mae'] = result['lstm_test_mae']
+        result['lstm_loss'] = result['lstm_test_loss']
+        result['lstm_rmse'] = result['lstm_test_rmse']
         del lstm_model
         tf.keras.backend.clear_session()
 
         # CNN
         cnn_model = build_cnn_model(L, n_features, BEST_CNN_CONFIG)
-        cnn_mae, cnn_loss = train_and_evaluate(
-            cnn_model, X_train, y_train, X_test, y_test, BEST_CNN_CONFIG
+        cnn_val_mae, cnn_val_loss, cnn_test_mae, cnn_test_loss = train_and_evaluate(
+            cnn_model, X_train, y_train, X_val, y_val, X_test, y_test, BEST_CNN_CONFIG
         )
-        result['cnn_mae'] = float(cnn_mae)
-        result['cnn_loss'] = float(cnn_loss)
-        result['cnn_rmse'] = float(np.sqrt(cnn_loss))
+        result['cnn_val_mae'] = float(cnn_val_mae)
+        result['cnn_val_loss'] = float(cnn_val_loss)
+        result['cnn_val_rmse'] = float(np.sqrt(cnn_val_loss))
+        result['cnn_test_mae'] = float(cnn_test_mae)
+        result['cnn_test_loss'] = float(cnn_test_loss)
+        result['cnn_test_rmse'] = float(np.sqrt(cnn_test_loss))
+        result['cnn_mae'] = result['cnn_test_mae']
+        result['cnn_loss'] = result['cnn_test_loss']
+        result['cnn_rmse'] = result['cnn_test_rmse']
         del cnn_model
         tf.keras.backend.clear_session()
 
         # GRU
         gru_model = build_gru_model(L, n_features, BEST_GRU_CONFIG)
-        gru_mae, gru_loss = train_and_evaluate(
-            gru_model, X_train, y_train, X_test, y_test, BEST_GRU_CONFIG
+        gru_val_mae, gru_val_loss, gru_test_mae, gru_test_loss = train_and_evaluate(
+            gru_model, X_train, y_train, X_val, y_val, X_test, y_test, BEST_GRU_CONFIG
         )
-        result['gru_mae'] = float(gru_mae)
-        result['gru_loss'] = float(gru_loss)
-        result['gru_rmse'] = float(np.sqrt(gru_loss))
+        result['gru_val_mae'] = float(gru_val_mae)
+        result['gru_val_loss'] = float(gru_val_loss)
+        result['gru_val_rmse'] = float(np.sqrt(gru_val_loss))
+        result['gru_test_mae'] = float(gru_test_mae)
+        result['gru_test_loss'] = float(gru_test_loss)
+        result['gru_test_rmse'] = float(np.sqrt(gru_test_loss))
+        result['gru_mae'] = result['gru_test_mae']
+        result['gru_loss'] = result['gru_test_loss']
+        result['gru_rmse'] = result['gru_test_rmse']
         del gru_model
         tf.keras.backend.clear_session()
 
         # Informer (PyTorch)
         import torch
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        try:
+            torch.use_deterministic_algorithms(True, warn_only=True)
+        except Exception:
+            pass
         informer_model = build_informer_sweep_model(L, n_features, BEST_INFORMER_CONFIG)
-        informer_mae, informer_loss = train_and_evaluate_informer(
-            informer_model, X_train, y_train, X_test, y_test,
+        inf_val_mae, inf_val_loss, inf_test_mae, inf_test_loss = train_and_evaluate_informer(
+            informer_model, X_train, y_train, X_val, y_val, X_test, y_test,
             BEST_INFORMER_CONFIG, L
         )
-        result['informer_mae'] = float(informer_mae)
-        result['informer_loss'] = float(informer_loss)
-        result['informer_rmse'] = float(np.sqrt(informer_loss))
+        result['informer_val_mae'] = float(inf_val_mae)
+        result['informer_val_loss'] = float(inf_val_loss)
+        result['informer_val_rmse'] = float(np.sqrt(inf_val_loss))
+        result['informer_test_mae'] = float(inf_test_mae)
+        result['informer_test_loss'] = float(inf_test_loss)
+        result['informer_test_rmse'] = float(np.sqrt(inf_test_loss))
+        result['informer_mae'] = result['informer_test_mae']
+        result['informer_loss'] = result['informer_test_loss']
+        result['informer_rmse'] = result['informer_test_rmse']
         del informer_model
 
     except Exception as e:
@@ -846,93 +914,91 @@ def run_single_lookback(data_path, output_dir, L):
     with open(result_path, 'w') as f:
         json.dump(result, f, indent=2)
 
-    print(f"  L={L:2d}: LSTM MAE={result['lstm_mae']}, RMSE={result['lstm_rmse']}, "
-          f"CNN MAE={result['cnn_mae']}, RMSE={result['cnn_rmse']}, "
-          f"GRU MAE={result['gru_mae']}, RMSE={result['gru_rmse']}, "
-          f"Inf MAE={result['informer_mae']}, RMSE={result['informer_rmse']}")
+    print(f"  L={L:2d}: LSTM val/test MAE={result.get('lstm_val_mae')}/{result.get('lstm_test_mae')}, "
+          f"CNN={result.get('cnn_val_mae')}/{result.get('cnn_test_mae')}, "
+          f"GRU={result.get('gru_val_mae')}/{result.get('gru_test_mae')}, "
+          f"Inf={result.get('informer_val_mae')}/{result.get('informer_test_mae')}")
 
 
 def collect_and_plot(data_path, output_dir):
-    """Collect all L_*.json results, generate plots and predictions."""
+    """Collect all L_*.json results, generate plots and predictions.
+
+    L-Auswahl erfolgt auf Val-MAE (keine Test-Leakage). Test-Metriken werden
+    fuer das gewaehlte L berichtet. Legacy-JSONs ohne val_mae fallen auf
+    test_mae zurueck (alte Runs vor P1-9-Fix).
+    """
     import tensorflow as tf
 
     print(f"Collecting results from {output_dir}...")
 
-    # Read all individual L results
-    results = {
-        'lookback_windows': LOOKBACK_WINDOWS,
-        'lstm_mae': [],
-        'cnn_mae': [],
-        'gru_mae': [],
-        'lstm_loss': [],
-        'cnn_loss': [],
-        'gru_loss': [],
-        'lstm_rmse': [],
-        'cnn_rmse': [],
-        'gru_rmse': [],
-        'informer_mae': [],
-        'informer_loss': [],
-        'informer_rmse': []
-    }
+    results = {'lookback_windows': LOOKBACK_WINDOWS}
+    for m in ['lstm', 'cnn', 'gru', 'informer']:
+        for metric in ['mae', 'loss', 'rmse']:
+            results[f'{m}_{metric}'] = []        # legacy (= test)
+            results[f'{m}_val_{metric}'] = []
+            results[f'{m}_test_{metric}'] = []
 
     for L in LOOKBACK_WINDOWS:
         result_path = os.path.join(output_dir, f'L_{L:02d}.json')
         if os.path.exists(result_path):
             with open(result_path, 'r') as f:
                 r = json.load(f)
-            results['lstm_mae'].append(r['lstm_mae'] if r['lstm_mae'] is not None else np.nan)
-            results['cnn_mae'].append(r['cnn_mae'] if r['cnn_mae'] is not None else np.nan)
-            results['gru_mae'].append(r.get('gru_mae') if r.get('gru_mae') is not None else np.nan)
-            results['informer_mae'].append(r.get('informer_mae') if r.get('informer_mae') is not None else np.nan)
-            results['lstm_loss'].append(r['lstm_loss'] if r['lstm_loss'] is not None else np.nan)
-            results['cnn_loss'].append(r['cnn_loss'] if r['cnn_loss'] is not None else np.nan)
-            results['gru_loss'].append(r.get('gru_loss') if r.get('gru_loss') is not None else np.nan)
-            results['informer_loss'].append(r.get('informer_loss') if r.get('informer_loss') is not None else np.nan)
-            # RMSE: read from JSON or compute from loss
-            for model in ['lstm', 'cnn', 'gru', 'informer']:
-                rmse_val = r.get(f'{model}_rmse')
-                if rmse_val is not None:
-                    results[f'{model}_rmse'].append(rmse_val)
-                else:
-                    loss_val = r.get(f'{model}_loss')
-                    results[f'{model}_rmse'].append(np.sqrt(loss_val) if loss_val is not None else np.nan)
+            for m in ['lstm', 'cnn', 'gru', 'informer']:
+                for metric in ['mae', 'loss', 'rmse']:
+                    # Legacy: m_metric == test metric
+                    legacy_v = r.get(f'{m}_{metric}')
+                    val_v = r.get(f'{m}_val_{metric}')
+                    test_v = r.get(f'{m}_test_{metric}', legacy_v)
+                    results[f'{m}_{metric}'].append(legacy_v if legacy_v is not None else np.nan)
+                    results[f'{m}_val_{metric}'].append(val_v if val_v is not None else np.nan)
+                    results[f'{m}_test_{metric}'].append(test_v if test_v is not None else np.nan)
+                # Backfill rmse from loss if missing
+                if np.isnan(results[f'{m}_val_rmse'][-1]) and not np.isnan(results[f'{m}_val_loss'][-1]):
+                    results[f'{m}_val_rmse'][-1] = float(np.sqrt(results[f'{m}_val_loss'][-1]))
+                if np.isnan(results[f'{m}_test_rmse'][-1]) and not np.isnan(results[f'{m}_test_loss'][-1]):
+                    results[f'{m}_test_rmse'][-1] = float(np.sqrt(results[f'{m}_test_loss'][-1]))
         else:
             print(f"  WARNING: Missing L={L}")
-            results['lstm_mae'].append(np.nan)
-            results['cnn_mae'].append(np.nan)
-            results['gru_mae'].append(np.nan)
-            results['informer_mae'].append(np.nan)
-            results['lstm_loss'].append(np.nan)
-            results['cnn_loss'].append(np.nan)
-            results['gru_loss'].append(np.nan)
-            results['informer_loss'].append(np.nan)
-            results['lstm_rmse'].append(np.nan)
-            results['cnn_rmse'].append(np.nan)
-            results['gru_rmse'].append(np.nan)
-            results['informer_rmse'].append(np.nan)
+            for m in ['lstm', 'cnn', 'gru', 'informer']:
+                for metric in ['mae', 'loss', 'rmse']:
+                    results[f'{m}_{metric}'].append(np.nan)
+                    results[f'{m}_val_{metric}'].append(np.nan)
+                    results[f'{m}_test_{metric}'].append(np.nan)
 
     valid_count = sum(1 for x in results['lstm_mae'] if not np.isnan(x))
     print(f"  Collected {valid_count}/{len(LOOKBACK_WINDOWS)} L-values")
 
-    # Plot MAE vs Lookback Window
-    (best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
-     best_gru_l, best_gru_mae, best_informer_l, best_informer_mae) = plot_mae_vs_lookback(results, output_dir)
+    # Selection metric: val_mae if available, else fallback to legacy test_mae
+    def _sel_key(model):
+        vals = results[f'{model}_val_mae']
+        if all(np.isnan(v) for v in vals):
+            print(f"  WARNING: no val_mae for {model.upper()} — falling back to test_mae (legacy L-selection)")
+            return results[f'{model}_mae']
+        return vals
 
-    # Determine best L values (top 3)
+    lstm_sel = _sel_key('lstm'); cnn_sel = _sel_key('cnn'); gru_sel = _sel_key('gru'); inf_sel = _sel_key('informer')
+
+    # Plot still shows test-MAE curves; selection uses val
+    (best_lstm_l, best_lstm_mae, best_cnn_l, best_cnn_mae,
+     best_gru_l, best_gru_mae, best_informer_l, best_informer_mae) = plot_mae_vs_lookback(
+        results, output_dir,
+        selection_mae={'lstm': lstm_sel, 'cnn': cnn_sel, 'gru': gru_sel, 'informer': inf_sel}
+    )
+
     lstm_mae_sorted = sorted(
-        [(i, m) for i, m in enumerate(results['lstm_mae']) if not np.isnan(m)],
+        [(i, m) for i, m in enumerate(lstm_sel) if not np.isnan(m)],
         key=lambda x: x[1]
     )
     cnn_mae_sorted = sorted(
-        [(i, m) for i, m in enumerate(results['cnn_mae']) if not np.isnan(m)],
+        [(i, m) for i, m in enumerate(cnn_sel) if not np.isnan(m)],
         key=lambda x: x[1]
     )
     gru_mae_sorted = sorted(
-        [(i, m) for i, m in enumerate(results['gru_mae']) if not np.isnan(m)],
+        [(i, m) for i, m in enumerate(gru_sel) if not np.isnan(m)],
         key=lambda x: x[1]
     )
     informer_mae_sorted = sorted(
-        [(i, m) for i, m in enumerate(results['informer_mae']) if not np.isnan(m)],
+        [(i, m) for i, m in enumerate(inf_sel) if not np.isnan(m)],
         key=lambda x: x[1]
     )
 
@@ -980,17 +1046,8 @@ def collect_and_plot(data_path, output_dir):
     print("  Cleaned up individual L_*.json files.")
 
 
-# All indices available
-INDICES = {
-    'SP500':    'SP500_historical_data.csv',
-    'DAX':      'DAX_historical_data.csv',
-    'NASDAQ':   'NASDAQ_historical_data.csv',
-    'FTSE100':  'FTSE100_historical_data.csv',
-    'HANG_SENG':'HANG_SENG_historical_data.csv',
-    'NIKKEI':   'NIKKEI_historical_data.csv',
-    '10Y_Bond': '10-Year Bond_historical_data.csv',
-    '30Y_Bond': '30 Year Bond_historical_data.csv',
-}
+# INDICES aus config.py (oben als CFG_INDICES importiert)
+INDICES = CFG_INDICES
 
 
 if __name__ == "__main__":

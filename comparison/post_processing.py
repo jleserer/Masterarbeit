@@ -45,19 +45,7 @@ from lookback_window_sweep import (
     build_informer_sweep_model, train_and_evaluate_informer
 )
 from models.informer_model import predict_informer
-
-
-# All indices
-INDICES = {
-    'SP500':    'SP500_historical_data.csv',
-    'DAX':      'DAX_historical_data.csv',
-    'NASDAQ':   'NASDAQ_historical_data.csv',
-    'FTSE100':  'FTSE100_historical_data.csv',
-    'HANG_SENG':'HANG_SENG_historical_data.csv',
-    'NIKKEI':   'NIKKEI_historical_data.csv',
-    '10Y_Bond': '10-Year Bond_historical_data.csv',
-    '30Y_Bond': '30 Year Bond_historical_data.csv',
-}
+from config import INDICES
 
 MODELS = ['lstm', 'cnn', 'gru', 'informer']
 MODEL_COLORS = {'lstm': '#2196F3', 'cnn': '#F44336', 'gru': '#4CAF50', 'informer': '#9C27B0'}

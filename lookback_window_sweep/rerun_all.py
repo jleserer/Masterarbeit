@@ -16,15 +16,13 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.join(SCRIPT_DIR, '..')
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 SWEEP_SCRIPT = os.path.join(SCRIPT_DIR, 'lookback_window_sweep.py')
 BEST_CONFIGS = os.path.join(PROJECT_ROOT, 'parameter_tuning', 'results', 'best_configurations.json')
 RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
 
-INDICES = [
-    'SP500', 'DAX', 'NASDAQ', 'FTSE100',
-    'HANG_SENG', 'NIKKEI', '10Y_Bond', '30Y_Bond',
-]
+sys.path.insert(0, PROJECT_ROOT)
+from config import ALL_INDICES as INDICES  # noqa: E402
 
 MAX_WORKERS = 16
 

@@ -45,7 +45,8 @@ SWEEP_RESULTS_DIR  = SWEEP_DIR / 'results'
 COMPARE_RESULTS_DIR = COMPARE_DIR / 'results'
 LOGS_DIR     = PROJECT_ROOT / 'logs'
 
-ALL_INDICES = ['SP500', 'DAX', 'NASDAQ', 'FTSE100', 'HANG_SENG', 'NIKKEI', '10Y_Bond', '30Y_Bond']
+sys.path.insert(0, str(PROJECT_ROOT))
+from config import ALL_INDICES  # noqa: E402
 
 
 # =============================================================================
@@ -724,8 +725,10 @@ def main():
     print(f"Sweep Tasks:   {len(ALL_INDICES)} × 60  = {len(ALL_INDICES) * 60}")
     print()
 
-    # Step 0: Clean (preserve tuning results for crash-recovery)
-    clean_results(full=args.clean_only)
+    # Step 0: Clean (preserve tuning results for crash-recovery).
+    # Bei --skip-tuning bleibt best_configurations.json erhalten (wird fuer Sweep benoetigt).
+    if not args.skip_tuning or args.clean_only:
+        clean_results(full=args.clean_only)
 
     if args.clean_only:
         print("--clean-only: Fertig.")
