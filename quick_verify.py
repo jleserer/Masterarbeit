@@ -1,7 +1,18 @@
-"""Quick verification: All 8 indices with 10 epochs, parallelized."""
+"""Quick verification: All configured indices with 10 epochs, parallelized.
+
+Nutzt die echten Pipeline-Architektur-Konstanten aus config.py — sonst testet
+das Smoke-Skript nicht das, was die Pipeline tatsächlich fährt.
+"""
 import os, sys, time
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from config import (
+    LSTM_UNITS, GRU_UNITS, CONV_FILTERS, DENSE_UNITS_CNN,
+    INFORMER_E_LAYERS, INFORMER_D_LAYERS, INFORMER_FACTOR,
+    RANDOM_SEED,
+)
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -12,10 +23,10 @@ def verify_index(index_name, filename):
     """Train LSTM+CNN+GRU+Informer on one index with minimal config, verify inverse_transform."""
     import tensorflow as tf
     tf.get_logger().setLevel('ERROR')
-    np.random.seed(42)
-    tf.random.set_seed(42)
+    np.random.seed(RANDOM_SEED)
+    tf.random.set_seed(RANDOM_SEED)
 
-    # Limit threads per worker (8 indices / ~16 cores = 2 threads each)
+    # Limit threads per worker (6 indices / ~16 cores ~= 2-3 threads each)
     tf.config.threading.set_intra_op_parallelism_threads(3)
     tf.config.threading.set_inter_op_parallelism_threads(1)
 
@@ -28,19 +39,19 @@ def verify_index(index_name, filename):
     preparator = DataPreparator(data_path)
     train_data, val_data, test_data = preparator.load_and_prepare()
 
-    L = 20  # small lookback
+    L = 20  # small lookback (Pipeline coarse value)
     X_train, y_train = create_sequences(train_data, L)
     X_test, y_test = create_sequences(test_data, L)
     n_feat = X_train.shape[2]
 
     results = {'index': index_name, 'L': L}
 
-    # --- LSTM (5 epochs) ---
+    # --- LSTM (echte Pipeline-Architektur) ---
     t0 = time.time()
     lstm = Sequential([
         Input(shape=(L, n_feat)),
-        LSTM(64, return_sequences=True), Dropout(0.2),
-        LSTM(32, return_sequences=False), Dropout(0.2),
+        LSTM(LSTM_UNITS[0], return_sequences=True), Dropout(0.2),
+        LSTM(LSTM_UNITS[1], return_sequences=False), Dropout(0.2),
         Dense(32, activation='relu'), Dropout(0.2),
         Dense(1, activation='linear')
     ])
@@ -59,14 +70,16 @@ def verify_index(index_name, filename):
     results['lstm_time'] = lstm_time
     results['lstm_pred_price_range'] = (float(lstm_pred_prices.min()), float(lstm_pred_prices.max()))
 
-    # --- CNN (5 epochs) ---
+    # --- CNN (echte Pipeline-Architektur, 3 Conv-Layer) ---
     t0 = time.time()
     cnn = Sequential([
         Input(shape=(L, n_feat)),
-        Conv1D(64, 3, activation='relu', padding='same'), MaxPooling1D(2), Dropout(0.2),
-        Conv1D(128, 3, activation='relu', padding='same'), MaxPooling1D(2), Dropout(0.2),
+        Conv1D(CONV_FILTERS[0], 3, activation='relu', padding='same'), MaxPooling1D(2), Dropout(0.2),
+        Conv1D(CONV_FILTERS[1], 3, activation='relu', padding='same'), MaxPooling1D(2), Dropout(0.2),
+        Conv1D(CONV_FILTERS[2], 3, activation='relu', padding='same'), Dropout(0.2),
         Flatten(),
-        Dense(32, activation='relu'), Dropout(0.2),
+        Dense(DENSE_UNITS_CNN, activation='relu'), Dropout(0.2),
+        Dense(DENSE_UNITS_CNN // 2, activation='relu'),
         Dense(1, activation='linear')
     ])
     cnn.compile(optimizer=Adam(0.001), loss='mse', metrics=['mae'])
@@ -83,12 +96,12 @@ def verify_index(index_name, filename):
     results['cnn_time'] = cnn_time
     results['cnn_pred_price_range'] = (float(cnn_pred_prices.min()), float(cnn_pred_prices.max()))
 
-    # --- GRU ---
+    # --- GRU (echte Pipeline-Architektur) ---
     t0 = time.time()
     gru = Sequential([
         Input(shape=(L, n_feat)),
-        GRU(64, return_sequences=True), Dropout(0.2),
-        GRU(32, return_sequences=False), Dropout(0.2),
+        GRU(GRU_UNITS[0], return_sequences=True), Dropout(0.2),
+        GRU(GRU_UNITS[1], return_sequences=False), Dropout(0.2),
         Dense(32, activation='relu'), Dropout(0.2),
         Dense(1, activation='linear')
     ])
@@ -106,17 +119,19 @@ def verify_index(index_name, filename):
     results['gru_time'] = gru_time
     results['gru_pred_price_range'] = (float(gru_pred_prices.min()), float(gru_pred_prices.max()))
 
-    # --- Informer (PyTorch) ---
+    # --- Informer (PyTorch) — echte Pipeline-Architektur-Konstanten ---
     t0 = time.time()
     import torch
-    torch.manual_seed(42)
+    torch.manual_seed(RANDOM_SEED)
     torch.set_num_threads(3)
     from models.informer_model import build_informer, train_informer, evaluate_informer, predict_informer
 
     informer_config = {
         'd_model': 32, 'n_heads': 4, 'dropout': 0.05,
         'lr': 0.001, 'batch': 32, 'epochs': EPOCHS,
-        'e_layers': 2, 'd_layers': 1, 'factor': 5
+        'e_layers': INFORMER_E_LAYERS,
+        'd_layers': INFORMER_D_LAYERS,
+        'factor': INFORMER_FACTOR,
     }
     informer = build_informer(L, n_feat, informer_config)
     train_informer(informer, X_train, y_train, informer_config, L)
@@ -125,7 +140,6 @@ def verify_index(index_name, filename):
     informer_pred_prices = preparator.inverse_transform(informer_pred.reshape(-1, 1), split='test', lookback=L)
     informer_time = time.time() - t0
     del informer
-    torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
     results['informer_mae'] = float(informer_mae)
     results['informer_rmse'] = float(np.sqrt(informer_loss))
@@ -141,17 +155,17 @@ def verify_index(index_name, filename):
 
 
 def main():
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from config import INDICES as indices
 
     print("=" * 70)
-    print("QUICK VERIFICATION: Returns Transformation (All 8 Indices)")
-    print(f"Indices: {len(indices)}, Models: LSTM+CNN+GRU+Informer, Epochs: {EPOCHS}, L: 20, Workers: 8")
+    print(f"QUICK VERIFICATION: Returns Transformation (All {len(indices)} Indices)")
+    print(f"Indices: {len(indices)}, Models: LSTM+CNN+GRU+Informer, Epochs: {EPOCHS}, L: 20, Workers: 6")
+    print(f"Architektur: LSTM={LSTM_UNITS}, GRU={GRU_UNITS}, CNN={CONV_FILTERS}+Dense{DENSE_UNITS_CNN}")
     print("=" * 70)
 
     t_start = time.time()
 
-    with ProcessPoolExecutor(max_workers=8) as pool:
+    with ProcessPoolExecutor(max_workers=len(indices)) as pool:
         futures = {pool.submit(verify_index, name, fn): name for name, fn in indices.items()}
         all_results = {}
         for future in futures:

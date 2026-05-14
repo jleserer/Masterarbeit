@@ -7,7 +7,7 @@ Enthält:
 - Modell-Architektur-Konstanten (LSTM_UNITS, GRU_UNITS, CNN-Filter, Informer-Layer)
 - LOOKBACK_WINDOW (Default für Full-Grid-Tuning)
 
-Alle Submodule (parameter_tuning, lookback_window_sweep, comparison, quick_verify)
+Alle Submodule (parameter_tuning, comparison, quick_verify)
 importieren von hier — verhindert Drift zwischen Kopien.
 """
 
@@ -15,11 +15,9 @@ INDICES = {
     'SP500':     'SP500_historical_data.csv',
     'DAX':       'DAX_historical_data.csv',
     'NASDAQ':    'NASDAQ_historical_data.csv',
-    'FTSE100':   'FTSE100_historical_data.csv',
     'HANG_SENG': 'HANG_SENG_historical_data.csv',
     'NIKKEI':    'NIKKEI_historical_data.csv',
     '10Y_Bond':  '10-Year Bond_historical_data.csv',
-    '30Y_Bond':  '30 Year Bond_historical_data.csv',
 }
 
 ALL_INDICES = list(INDICES.keys())
@@ -96,6 +94,5 @@ def set_all_seeds(seed=None):
     try:
         import torch
         torch.manual_seed(s)
-        torch.cuda.manual_seed_all(s)
     except Exception:
         pass

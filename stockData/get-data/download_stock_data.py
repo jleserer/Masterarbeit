@@ -6,12 +6,10 @@ import pandas as pd
 stocks = {
     'SP500': '^GSPC',         # S&P 500
     'NASDAQ': '^IXIC',        # NASDAQ Composite
-    'FTSE100': '^FTSE',       # FTSE 100 Index
     'NIKKEI': '^N225',        # Nikkei 225
     'HANG_SENG': '^HSI',      # Hang Seng Index
     'DAX': '^GDAXI',          # DAX Performance Index
     '10-Year Bond': '^TNX',   # CBOE 10-Year Treasury Note Yield Index
-    '30 Year Bond': '^TYX',   # CBOE 30-Year Treasury Bond Yield Index
     'USD/JPY': 'JPY=X',       # USD to JPY Exchange Rate
     'GBP/USD': 'GBPUSD=X'     # GBP to USD Exchange Rate
 }

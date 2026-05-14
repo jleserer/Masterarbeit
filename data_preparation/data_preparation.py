@@ -34,7 +34,7 @@ class DataPreparator:
 
         Hinweis: Der gemeinsame Start-Cutoff wird durch den Preprocessing-Schritt
         (stockData/get-data/normalize_data.py) in den CSVs selbst sichergestellt.
-        Ein separater start_date-Parameter wird hier nicht mehr unterstuetzt.
+        Ein separater start_date-Parameter wird hier nicht mehr unterstützt.
         """
         self.data_path = data_path
         self.target_columns = target_columns or ['Close']

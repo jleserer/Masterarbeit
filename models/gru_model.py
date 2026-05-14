@@ -2,236 +2,78 @@
 GRU Model for Stock Price Prediction
 ======================================
 Architecture & Hyperparameters (parallel to LSTM model):
-  - Layers: 2 stacked GRU layers (128, 64 units)
+  - Layers: 2 stacked GRU layers (config.GRU_UNITS, default [128, 64])
   - Dropout: 0.2 for regularization
   - Dense layers: 32 units for output projection
   - Optimizer: Adam (learning rate 0.001)
   - Loss: MSE (for single-output regression)
 
-Lookback Window: L=60 (60 trading days history)
+Lookback Window: aus config.LOOKBACK_WINDOW (default 60)
 Target: Single-output (Close price only)
+
+Hinweis: Diese Klasse ist der Standalone-Pfad. Die Pipeline (parameter_tuning.py)
+baut Modelle direkt aus den config.py-Konstanten und nutzt diese Klasse nicht.
 """
 
 import os
 import sys
-import numpy as np
-import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import GRU, Dense, Dropout
 from tensorflow.keras.optimizers import Adam
-from data_preparation import DataPreparator, create_sequences
+from config import GRU_UNITS as _CONFIG_GRU_UNITS, LOOKBACK_WINDOW as _CONFIG_LOOKBACK_WINDOW
+from models.base_keras_model import BaseKerasTimeSeriesModel
 
 
-class GRUModel:
+class GRUModel(BaseKerasTimeSeriesModel):
     """GRU-based stock price predictor."""
 
-    # Architecture Configuration
-    LOOKBACK_WINDOW = 60  # L: number of previous time steps (60 days floating window)
-    GRU_UNITS = [128, 64]  # Two GRU layers
-    DROPOUT_RATE = 0.2
-    DENSE_UNITS = 32
-    LEARNING_RATE = 0.001
-    BATCH_SIZE = 32
-    EPOCHS = 100
+    MODEL_LABEL = 'GRU'
+    LOOKBACK_WINDOW = _CONFIG_LOOKBACK_WINDOW
+    GRU_UNITS = list(_CONFIG_GRU_UNITS)
 
-    def __init__(self, data_path, output_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'parameter_tuning', 'results', 'GRU', 'SP500')):
-        """
-        Args:
-            data_path: Path to CSV file
-            output_dir: Directory to save results
-        """
-        self.data_path = data_path
-        self.output_dir = output_dir
-        self.model = None
-        self.preparator = None
-        self.X_train = self.X_val = self.X_test = None
-        self.y_train = self.y_val = self.y_test = None
-        self.history = None
-        self.predictions = {}
-
-        os.makedirs(output_dir, exist_ok=True)
-
-    def prepare_data(self):
-        """Load and prepare data with sequences."""
-        print("=" * 70)
-        print("STEP 1: Data Preparation (65%-15%-20% split)")
-        print("=" * 70)
-
-        self.preparator = DataPreparator(self.data_path)
-        train_data, val_data, test_data = self.preparator.load_and_prepare()
-
-        # Create sequences with lookback window
-        print(f"\nCreating sequences with Lookback Window L={self.LOOKBACK_WINDOW}...")
-        self.X_train, self.y_train = create_sequences(train_data, self.LOOKBACK_WINDOW)
-        self.X_val, self.y_val = create_sequences(val_data, self.LOOKBACK_WINDOW)
-        self.X_test, self.y_test = create_sequences(test_data, self.LOOKBACK_WINDOW)
-
-        print(f"Training sequences: X={self.X_train.shape}, y={self.y_train.shape}")
-        print(f"Validation sequences: X={self.X_val.shape}, y={self.y_val.shape}")
-        print(f"Test sequences: X={self.X_test.shape}, y={self.y_test.shape}")
+    def __init__(self, data_path,
+                 output_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                         '..', 'parameter_tuning', 'results',
+                                         'GRU', 'SP500')):
+        super().__init__(data_path, output_dir)
 
     def build_model(self):
-        """Build GRU model."""
         print("\n" + "=" * 70)
-        print("STEP 2: Build GRU Model")
+        print(f"STEP 2: Build {self.MODEL_LABEL} Model")
         print("=" * 70)
 
         n_features = self.X_train.shape[2]
 
         self.model = Sequential([
-            # First GRU layer with return sequences
             GRU(self.GRU_UNITS[0],
-                 input_shape=(self.LOOKBACK_WINDOW, n_features),
-                 return_sequences=True,
-                 name='GRU_1'),
+                input_shape=(self.LOOKBACK_WINDOW, n_features),
+                return_sequences=True, name='GRU_1'),
             Dropout(self.DROPOUT_RATE),
 
-            # Second GRU layer
             GRU(self.GRU_UNITS[1],
-                 return_sequences=False,
-                 name='GRU_2'),
+                return_sequences=False, name='GRU_2'),
             Dropout(self.DROPOUT_RATE),
 
-            # Dense layers
             Dense(self.DENSE_UNITS, activation='relu', name='Dense_1'),
             Dropout(self.DROPOUT_RATE),
 
-            # Output layer (single output: Close)
-            Dense(1, activation='linear', name='Output')
+            Dense(1, activation='linear', name='Output'),
         ])
 
-        optimizer = Adam(learning_rate=self.LEARNING_RATE)
-        self.model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
+        self.model.compile(optimizer=Adam(learning_rate=self.LEARNING_RATE),
+                           loss='mse', metrics=['mae'])
 
         print("\nModel Architecture:")
         self.model.summary()
-
-        print(f"\nHyperparameters:")
-        print(f"  - GRU Units: {self.GRU_UNITS}")
-        print(f"  - Dropout Rate: {self.DROPOUT_RATE}")
-        print(f"  - Dense Units: {self.DENSE_UNITS}")
-        print(f"  - Learning Rate: {self.LEARNING_RATE}")
-        print(f"  - Batch Size: {self.BATCH_SIZE}")
-        print(f"  - Epochs: {self.EPOCHS}")
-
-    def train(self):
-        """Train the model."""
-        print("\n" + "=" * 70)
-        print("STEP 3: Train GRU Model")
-        print("=" * 70)
-
-        self.history = self.model.fit(
-            self.X_train, self.y_train,
-            validation_data=(self.X_val, self.y_val),
-            epochs=self.EPOCHS,
-            batch_size=self.BATCH_SIZE,
-            verbose=1
-        )
-
-        print("\nTraining completed!")
-
-    def evaluate(self):
-        """Evaluate model on test set."""
-        print("\n" + "=" * 70)
-        print("STEP 4: Evaluate Model")
-        print("=" * 70)
-
-        train_loss, train_mae = self.model.evaluate(self.X_train, self.y_train, verbose=0)
-        val_loss, val_mae = self.model.evaluate(self.X_val, self.y_val, verbose=0)
-        test_loss, test_mae = self.model.evaluate(self.X_test, self.y_test, verbose=0)
-
-        train_rmse, val_rmse, test_rmse = np.sqrt(train_loss), np.sqrt(val_loss), np.sqrt(test_loss)
-
-        print(f"\nTraining   Loss: {train_loss:.6f}, MAE: {train_mae:.6f}, RMSE: {train_rmse:.6f}")
-        print(f"Validation Loss: {val_loss:.6f}, MAE: {val_mae:.6f}, RMSE: {val_rmse:.6f}")
-        print(f"Test       Loss: {test_loss:.6f}, MAE: {test_mae:.6f}, RMSE: {test_rmse:.6f}")
-
-        return test_loss, test_mae, test_rmse
-
-    def predict(self):
-        """Generate predictions."""
-        print("\n" + "=" * 70)
-        print("STEP 5: Generate Predictions")
-        print("=" * 70)
-
-        self.predictions['train'] = self.model.predict(self.X_train, verbose=0)
-        self.predictions['val'] = self.model.predict(self.X_val, verbose=0)
-        self.predictions['test'] = self.model.predict(self.X_test, verbose=0)
-
-        # Inverse transform to original price scale
-        self.predictions['train_original'] = self.preparator.inverse_transform(
-            self.predictions['train'], split='train', lookback=self.LOOKBACK_WINDOW)
-        self.predictions['val_original'] = self.preparator.inverse_transform(
-            self.predictions['val'], split='val', lookback=self.LOOKBACK_WINDOW)
-        self.predictions['test_original'] = self.preparator.inverse_transform(
-            self.predictions['test'], split='test', lookback=self.LOOKBACK_WINDOW)
-
-        print("Predictions generated and inverse-transformed!")
-
-    def plot_results(self):
-        """Plot training history and predictions."""
-        print("\n" + "=" * 70)
-        print("STEP 6: Plot Results")
-        print("=" * 70)
-
-        # Plot training history
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-        axes[0].plot(self.history.history['loss'], label='Train Loss')
-        axes[0].plot(self.history.history['val_loss'], label='Val Loss')
-        axes[0].set_xlabel('Epoch')
-        axes[0].set_ylabel('Loss (MSE)')
-        axes[0].set_title('GRU Training History - Loss')
-        axes[0].legend()
-        axes[0].grid(True)
-
-        axes[1].plot(self.history.history['mae'], label='Train MAE')
-        axes[1].plot(self.history.history['val_mae'], label='Val MAE')
-        axes[1].set_xlabel('Epoch')
-        axes[1].set_ylabel('MAE')
-        axes[1].set_title('GRU Training History - MAE')
-        axes[1].legend()
-        axes[1].grid(True)
-
-        plt.tight_layout()
-        plot_path = os.path.join(self.output_dir, 'gru_training_history.png')
-        plt.savefig(plot_path)
-        print(f"Saved training history plot: {plot_path}")
-        plt.close()
-
-    def save_model(self):
-        """Save model to disk."""
-        model_path = os.path.join(self.output_dir, 'gru_model.h5')
-        self.model.save(model_path)
-        print(f"Model saved to {model_path}")
-
-    def run_full_pipeline(self):
-        """Execute complete training pipeline."""
-        self.prepare_data()
-        self.build_model()
-        self.train()
-        self.evaluate()
-        self.predict()
-        self.plot_results()
-        self.save_model()
-
-        print("\n" + "=" * 70)
-        print("GRU Pipeline completed!")
-        print("=" * 70)
+        print(f"\nHyperparameters: GRU Units={self.GRU_UNITS}, "
+              f"Dropout={self.DROPOUT_RATE}, Dense={self.DENSE_UNITS}, "
+              f"LR={self.LEARNING_RATE}, Batch={self.BATCH_SIZE}, Epochs={self.EPOCHS}")
 
 
 if __name__ == "__main__":
-    # Use one stock dataset
-    data_path = os.path.join(
-        os.path.dirname(__file__),
-        '..',
-        'stockData',
-        'preprocessedData',
-        'SP500_historical_data.csv'
-    )
-
-    gru = GRUModel(data_path)
-    gru.run_full_pipeline()
+    data_path = os.path.join(os.path.dirname(__file__), '..', 'stockData',
+                             'preprocessedData', 'SP500_historical_data.csv')
+    GRUModel(data_path).run_full_pipeline()

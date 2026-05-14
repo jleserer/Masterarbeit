@@ -327,8 +327,14 @@ class Informer(nn.Module):
     def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, pred_len,
                  d_model=64, n_heads=8, e_layers=2, d_layers=1,
                  d_ff=256, dropout=0.05, factor=5, activation='gelu', distil=True):
+        """seq_len wird aus Backward-Compat weiter akzeptiert, aber nicht
+        gespeichert oder benutzt. Die tatsächliche Sequenzlänge wird zur
+        Laufzeit aus der Tensor-Shape in ProbAttention.forward gelesen
+        (B, H, L_Q, D = queries.shape), d.h. der Lookback-Sweep wirkt
+        korrekt pro L ohne dass das Modell einen festen seq_len bräuchte.
+        """
         super().__init__()
-        self.seq_len = seq_len
+        # seq_len bewusst NICHT gespeichert: unbenutzt und irreführend.
         self.label_len = label_len
         self.pred_len = pred_len
 
@@ -435,7 +441,7 @@ class InformerModel:
     def build_model(self):
         """Build Informer model."""
         n_features = self.X_train.shape[2]
-        label_len = self.LOOKBACK_WINDOW // 2
+        label_len = max(1, self.LOOKBACK_WINDOW // 2)  # P1-8: min. 1 reales Decoder-Token
 
         self.model = Informer(
             enc_in=n_features,
@@ -468,7 +474,7 @@ class InformerModel:
 
         Decoder input = last label_len timesteps from encoder input + zero padding for pred_len.
         """
-        label_len = self.LOOKBACK_WINDOW // 2
+        label_len = max(1, self.LOOKBACK_WINDOW // 2)  # P1-8: min. 1 reales Decoder-Token
         # Take the last label_len timesteps as decoder start token
         dec_start = X_batch[:, -label_len:, :]  # (batch, label_len, n_features)
         # Append zero padding for prediction position
@@ -658,7 +664,7 @@ def build_informer(lookback_window, n_features, config):
     d_ff = config.get('d_ff', 4 * d_model)
     factor = config.get('factor', 5)
 
-    label_len = lookback_window // 2
+    label_len = max(1, lookback_window // 2)  # P1-8: min. 1 reales Decoder-Token
 
     model = Informer(
         enc_in=n_features,
@@ -685,10 +691,10 @@ def train_informer(model, X_train, y_train, config, lookback_window, verbose=0,
     """Train an Informer model. Returns training history dict.
 
     Semantik der Val-Metriken:
-      - Wenn X_val/y_val uebergeben: val_loss/val_mae werden nach jeder Epoche
+      - Wenn X_val/y_val übergeben: val_loss/val_mae werden nach jeder Epoche
         berechnet (analog zu Keras model.fit(..., validation_data=...)).
-      - Ohne X_val/y_val: history enthaelt nur train_loss pro Epoche;
-        Val-Metriken muessen dann separat via evaluate_informer() berechnet werden.
+      - Ohne X_val/y_val: history enthält nur train_loss pro Epoche;
+        Val-Metriken müssen dann separat via evaluate_informer() berechnet werden.
 
     Args:
         model: Informer nn.Module
@@ -697,13 +703,13 @@ def train_informer(model, X_train, y_train, config, lookback_window, verbose=0,
         config: Dict with 'lr', 'batch', 'epochs'
         lookback_window: L (for decoder input construction)
         verbose: 0=silent, 1=epoch logs
-        X_val, y_val: Optional Val-Set fuer per-Epoche Val-Loss
+        X_val, y_val: Optional Val-Set für per-Epoche Val-Loss
 
     Returns:
         dict with 'train_loss' (+ optional 'val_loss', 'val_mae', 'mae') pro Epoche
     """
     device = next(model.parameters()).device
-    label_len = lookback_window // 2
+    label_len = max(1, lookback_window // 2)  # P1-8: min. 1 reales Decoder-Token
 
     X_t = torch.FloatTensor(X_train).to(device)
     y_t = torch.FloatTensor(y_train).to(device)
@@ -715,15 +721,17 @@ def train_informer(model, X_train, y_train, config, lookback_window, verbose=0,
     optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
 
     has_val = X_val is not None and y_val is not None
-    history = {'train_loss': [], 'mae': []}
+    # MARE wird nicht pro Epoche getrackt — sie ist auf der Preis-Ebene definiert
+    # und bräuchte dafür Zugriff auf DataPreparator/base_prices, was hier nicht
+    # sauber verfügbar ist. MARE wird post-training via evaluate_informer_model
+    # aus dem Tuner auf den inverse-transformierten Preisen berechnet.
+    history = {'train_loss': []}
     if has_val:
         history['val_loss'] = []
-        history['val_mae'] = []
 
     for epoch in range(config['epochs']):
         model.train()
         epoch_losses = []
-        epoch_maes = []
         for X_batch, y_batch in loader:
             optimizer.zero_grad()
             dec_start = X_batch[:, -label_len:, :]
@@ -736,17 +744,13 @@ def train_informer(model, X_train, y_train, config, lookback_window, verbose=0,
             loss.backward()
             optimizer.step()
             epoch_losses.append(loss.item())
-            epoch_maes.append(torch.mean(torch.abs(pred.detach() - y_batch)).item())
 
         avg_loss = float(np.mean(epoch_losses))
-        avg_mae = float(np.mean(epoch_maes))
         history['train_loss'].append(avg_loss)
-        history['mae'].append(avg_mae)
 
         if has_val:
-            val_loss, val_mae = evaluate_informer(model, X_val, y_val, lookback_window)
+            val_loss, _val_mae = evaluate_informer(model, X_val, y_val, lookback_window)
             history['val_loss'].append(float(val_loss))
-            history['val_mae'].append(float(val_mae))
 
         if verbose and ((epoch + 1) % 10 == 0):
             msg = f"  Epoch {epoch+1}/{config['epochs']}: Loss={avg_loss:.6f}"
@@ -757,20 +761,28 @@ def train_informer(model, X_train, y_train, config, lookback_window, verbose=0,
     return history
 
 
-def evaluate_informer(model, X_data, y_data, lookback_window):
-    """Evaluate an Informer model. Returns (mse_loss, mae).
+MARE_EPSILON = 1e-6
+
+
+def evaluate_informer(model, X_data, y_data, lookback_window, return_mare=False):
+    """Evaluate an Informer model.
 
     Args:
         model: Informer nn.Module
         X_data: numpy array (n, L, features)
         y_data: numpy array (n,)
         lookback_window: L
+        return_mare: Wenn True, wird zusätzlich MARE zurückgegeben.
+                     Für Backward-Compat ist der Default False — bestehende
+                     Aufrufer brauchen nicht angepasst zu werden.
 
     Returns:
-        (mse_loss, mae) as floats
+        (mse_loss, mae) oder (mse_loss, mae, mare) wenn return_mare=True.
+        MARE = mean(|pred - target| / (|target| + eps)) — analog
+        torchmetrics.MeanAbsoluteRelativeError.
     """
     device = next(model.parameters()).device
-    label_len = lookback_window // 2
+    label_len = max(1, lookback_window // 2)  # P1-8: min. 1 reales Decoder-Token
 
     model.eval()
     X_t = torch.FloatTensor(X_data).to(device)
@@ -785,7 +797,11 @@ def evaluate_informer(model, X_data, y_data, lookback_window):
         pred = output.squeeze(-1).squeeze(-1)
 
         mse_loss = F.mse_loss(pred, y_t).item()
-        mae = torch.mean(torch.abs(pred - y_t)).item()
+        abs_err = torch.abs(pred - y_t)
+        mae = torch.mean(abs_err).item()
+        if return_mare:
+            mare = torch.mean(abs_err / (torch.abs(y_t) + MARE_EPSILON)).item()
+            return mse_loss, mae, mare
 
     return mse_loss, mae
 
@@ -802,7 +818,7 @@ def predict_informer(model, X_data, lookback_window):
         numpy array of predictions (n,)
     """
     device = next(model.parameters()).device
-    label_len = lookback_window // 2
+    label_len = max(1, lookback_window // 2)  # P1-8: min. 1 reales Decoder-Token
 
     model.eval()
     X_t = torch.FloatTensor(X_data).to(device)
