@@ -30,7 +30,7 @@ SCHRITT 4: Aggregation
    → parameter_tuning/results/best_configurations.json
 
 SCHRITT 5: Plots pro Index — landen in comparison/results/<INDEX>/
-   01_mare_vs_lookback.png   Val coarse (gestrichelt) + Test sweep L=1..60 (durchgezogen) + best_L Stern
+   01_mape_vs_lookback.png   Val coarse (gestrichelt) + Test sweep L=1..60 (durchgezogen) + best_L Stern
    02_predictions_vs_actual  best-L Predictions, Preis-Ebene
    03_scatter_predictions    Predicted vs Actual Preise
    zoom_plots/zoom_<MODEL>_L<best_L>.png  (300 DPI, mit Datumsachse)
@@ -149,7 +149,7 @@ Masterarbeit/
 │   ├── plot_with_dates.py             Zoom-Plot-Generator mit Datumsachse (von run_pipeline importiert + standalone nutzbar)
 │   └── results/
 │       ├── <INDEX>/                   Pipeline-Phase-5 Plots (Val/Test, Predictions):
-│       │                                01_mare_vs_lookback.png
+│       │                                01_mape_vs_lookback.png
 │       │                                02_predictions_vs_actual.png
 │       │                                03_scatter_predictions.png
 │       │                              Phase-6 erweiterte Metriken:

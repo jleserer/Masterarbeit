@@ -1,0 +1,74 @@
+{
+  "SP500": {
+    "n_test": 1913,
+    "mae_price": 89.86517539455573,
+    "rmse_price": 116.76147550188693,
+    "mape_price_pct": 2.2421137985075528,
+    "r_squared_price": 0.9895459137967129,
+    "mae_return": 0.022339821305976545,
+    "rmse_return": 0.030528407829404157,
+    "naive_baseline_mae_return": 0.008081884447763284,
+    "mae_improvement_pct": -176.41846960778116,
+    "directional_accuracy_pct": 46.68060637741767
+  },
+  "DAX": {
+    "n_test": 1921,
+    "mae_price": 335.7057530257678,
+    "rmse_price": 480.73087137202555,
+    "mape_price_pct": 2.289523413259018,
+    "r_squared_price": 0.9829923194108956,
+    "mae_return": 0.02273011521696357,
+    "rmse_return": 0.034682291025859,
+    "naive_baseline_mae_return": 0.008214110642121198,
+    "mae_improvement_pct": -176.7203438970696,
+    "directional_accuracy_pct": 51.379489849036965
+  },
+  "NASDAQ": {
+    "n_test": 1913,
+    "mae_price": 365.32187231994084,
+    "rmse_price": 465.2232826207119,
+    "mape_price_pct": 2.8950229345980674,
+    "r_squared_price": 0.988000517014185,
+    "mae_return": 0.028904458578333337,
+    "rmse_return": 0.03688850217330487,
+    "naive_baseline_mae_return": 0.010450514336022598,
+    "mae_improvement_pct": -176.5840766200432,
+    "directional_accuracy_pct": 45.60669456066946
+  },
+  "HANG_SENG": {
+    "n_test": 1875,
+    "mae_price": 645.9839895833334,
+    "rmse_price": 854.0074894968003,
+    "mape_price_pct": 2.8381170202642445,
+    "r_squared_price": 0.9569871723046192,
+    "mae_return": 0.028324703245610847,
+    "rmse_return": 0.03820428425425925,
+    "naive_baseline_mae_return": 0.010729089305668432,
+    "mae_improvement_pct": -163.99913765883406,
+    "directional_accuracy_pct": 51.78666666666667
+  },
+  "NIKKEI": {
+    "n_test": 1864,
+    "mae_price": 706.7904185282827,
+    "rmse_price": 990.8832014888773,
+    "mape_price_pct": 2.4145482104986917,
+    "r_squared_price": 0.9812970631099672,
+    "mae_return": 0.024100580678210737,
+    "rmse_return": 0.033726195593263064,
+    "naive_baseline_mae_return": 0.009242568429227641,
+    "mae_improvement_pct": -160.75631316937637,
+    "directional_accuracy_pct": 51.74449812130971
+  },
+  "10Y_Bond": {
+    "n_test": 1906,
+    "mae_price": 0.11383394264349281,
+    "rmse_price": 0.14849774856693887,
+    "mape_price_pct": 5.010060456388487,
+    "r_squared_price": 0.986715011275156,
+    "mae_return": 0.04921062727529213,
+    "rmse_return": 0.07442227297215352,
+    "naive_baseline_mae_return": 0.019826410362619673,
+    "mae_improvement_pct": -148.20744842481866,
+    "directional_accuracy_pct": 51.28068303094984
+  }
+}

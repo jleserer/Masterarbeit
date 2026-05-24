@@ -837,7 +837,7 @@ def generate_plots_per_index():
     per-L Daten (best_test_metrics.json + pred_test.npz).
 
     Kein Re-Training. Plots pro Index:
-      - 01_mare_vs_lookback.png             (Val + Test MARE je Modell über L=1..60)
+      - 01_mape_vs_lookback.png             (Val + Test MAPE je Modell über L=1..60)
       - 02_predictions_vs_actual.png        (best-L je Modell, Preis-Ebene)
       - 03_scatter_predictions.png          (Scatter pred vs actual)
       - zoom_plots/zoom_<model>_L<best_L>.png  (Zoom-Plot mit Datumsachse)
@@ -862,16 +862,16 @@ def generate_plots_per_index():
                     'gru': '#4CAF50', 'informer': '#9C27B0'}
     model_markers = {'lstm': 'o', 'cnn': 's', 'gru': '^', 'informer': 'D'}
 
-    # Legenden-Position für 01_mare_vs_lookback.png pro Index. Die Kurven liegen
+    # Legenden-Position für 01_mape_vs_lookback.png pro Index. Die Kurven liegen
     # je nach Index unterschiedlich, daher manuell pro Index gesetzt, damit die
     # Legende nicht überlappt. Default (nicht gelistet): rechts auf 1/3 Höhe.
     # Werte sind (loc, bbox_to_anchor) — bbox=None -> Standard-loc ohne Anchor.
-    mare_legend_pos = {
+    mape_legend_pos = {
         'DAX':    ('upper left',    None),
         'NIKKEI': ('upper left',    None),
         'NASDAQ': ('center right',  (0.99, 0.47)),
     }
-    mare_legend_default = ('center right', (0.99, 0.33))
+    mape_legend_default = ('center right', (0.99, 0.33))
 
     # Zoom-Plot-Helper mit Datumsachse (aus comparison/plot_with_dates.py)
     sys.path.insert(0, str(COMPARE_DIR))
@@ -890,7 +890,8 @@ def generate_plots_per_index():
         out_dir = COMPARE_RESULTS_DIR / index_name
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # --- 1) MARE vs L Plot: Val-Kurve coarse (7 Punkte, gestrichelt) + Test-Kurve fine (60 Punkte) ---
+        # --- 1) MAPE vs L Plot: Val-Kurve coarse (7 Punkte, gestrichelt) + Test-Kurve fine (60 Punkte) ---
+        # MAPE = MARE * 100 (relativer Fehler in Prozent, identische Definition).
         fig, ax = plt.subplots(figsize=(12, 6))
         for model_type in ['lstm', 'cnn', 'gru', 'informer']:
             entry = idx_cfg.get(f'best_{model_type}')
@@ -899,11 +900,15 @@ def generate_plots_per_index():
             color = model_colors[model_type]
             best_L = entry['L']
             test_mare_at_best = entry.get('test_mare')
+            test_mape_at_best = (test_mare_at_best * 100
+                                 if test_mare_at_best is not None else None)
 
             # Val-Kurve coarse (7 Punkte) — als Referenz der Hyperparameter-Selektion
             if entry.get('val_curve_coarse'):
                 vc = sorted(entry['val_curve_coarse'], key=lambda x: x['L'])
-                ax.plot([e['L'] for e in vc], [e.get('val_mare') for e in vc],
+                vals = [e.get('val_mare') for e in vc]
+                ax.plot([e['L'] for e in vc],
+                        [v * 100 if v is not None else None for v in vals],
                         marker=model_markers[model_type], linestyle='--',
                         linewidth=1.2, color=color, alpha=0.55,
                         label=f"{model_type.upper()} Val coarse (Best L={best_L})")
@@ -911,33 +916,35 @@ def generate_plots_per_index():
             # Test-Kurve fine (60 Punkte) — die eigentliche Sweep-Kurve
             if entry.get('test_curve_fine'):
                 tc = sorted(entry['test_curve_fine'], key=lambda x: x['L'])
-                ax.plot([e['L'] for e in tc], [e.get('test_mare') for e in tc],
+                tvals = [e.get('test_mare') for e in tc]
+                ax.plot([e['L'] for e in tc],
+                        [v * 100 if v is not None else None for v in tvals],
                         linestyle='-', linewidth=1.8, color=color, alpha=0.9,
                         label=f"{model_type.upper()} Test sweep "
-                              f"(Test MARE @ L={best_L} = "
-                              f"{(test_mare_at_best if test_mare_at_best is not None else float('nan')):.4f})")
+                              f"(Test MAPE @ L={best_L} = "
+                              f"{(test_mape_at_best if test_mape_at_best is not None else float('nan')):.2f} %)")
 
             # best_L als Stern auf der Test-Kurve hervorheben
-            if test_mare_at_best is not None:
-                ax.scatter([best_L], [test_mare_at_best], marker='*',
+            if test_mape_at_best is not None:
+                ax.scatter([best_L], [test_mape_at_best], marker='*',
                            s=220, color=color, edgecolor='black', linewidth=1.3,
                            zorder=5)
 
-        ax.set_title(f'{index_name} — Val MARE coarse (gestrichelt) + Test MARE Sweep L=1..60 (durchgezogen)',
+        ax.set_title(f'{index_name} — Val MAPE coarse (gestrichelt) + Test MAPE Sweep L=1..60 (durchgezogen)',
                      fontsize=12, fontweight='bold')
         ax.set_xlabel('Lookback Window L', fontsize=10)
-        ax.set_ylabel('MARE (auf Preis-Ebene)', fontsize=10)
+        ax.set_ylabel('MAPE in % (auf Preis-Ebene)', fontsize=10)
         ax.grid(True, alpha=0.3)
         # Legende INNERHALB der Achse — hält sie im Diagrammbereich, damit
         # bbox_inches='tight' die Plotfläche nicht verkleinert (gleiche Breite wie bisher).
-        # Position pro Index aus mare_legend_pos (siehe oben).
-        leg_loc, leg_bbox = mare_legend_pos.get(index_name, mare_legend_default)
+        # Position pro Index aus mape_legend_pos (siehe oben).
+        leg_loc, leg_bbox = mape_legend_pos.get(index_name, mape_legend_default)
         if leg_bbox is not None:
             ax.legend(loc=leg_loc, bbox_to_anchor=leg_bbox, fontsize=8, framealpha=0.9)
         else:
             ax.legend(loc=leg_loc, fontsize=8, framealpha=0.9)
         plt.tight_layout()
-        plt.savefig(out_dir / '01_mare_vs_lookback.png', dpi=200, bbox_inches='tight')
+        plt.savefig(out_dir / '01_mape_vs_lookback.png', dpi=200, bbox_inches='tight')
         plt.close()
 
         # --- 2) Predictions vs Actual (best L pro Modell, Preis-Ebene) ---

@@ -117,7 +117,7 @@ def main():
     print(f"    <MODEL>/SP500/L05/pred_test.npz           -> Test-Predictions")
     print(f"    best_configurations.json                  -> Phase-4 Aggregation")
     print(f"  comparison/results/SP500/")
-    print(f"    01_mare_vs_lookback.png                          -> MAE-vs-L Plot")
+    print(f"    01_mape_vs_lookback.png                          -> MAPE-vs-L Plot")
     print(f"    02_predictions_vs_actual.png                     -> Predictions Plot")
     print(f"    03_scatter_predictions.png                       -> Scatter Plot")
     print(f"    zoom_plots/zoom_<MODEL>_L<best_L>.png            -> Zoom-Plots mit Datumsachse (300 DPI)")

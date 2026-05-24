@@ -105,17 +105,31 @@ def load_predictions(index_name, model_name, best_L, results_dir):
 # 3. COMPUTE EXTENDED METRICS
 # =============================================================================
 
-def compute_metrics(y_actual, y_predicted):
-    """Compute extended metrics from actual and predicted returns."""
+def compute_metrics(y_actual, y_predicted, y_actual_prices=None, y_pred_prices=None):
+    """Berechnet erweiterte Metriken aus tatsächlichen und vorhergesagten Werten.
+
+    MAE, MSE, RMSE, Naive-Baseline und Directional Accuracy werden auf der
+    Log-Return-Ebene berechnet (y_actual / y_predicted) — nur dort sind diese
+    Größen sinnvoll: die Naive-Baseline (Vorhersage = 0) und der Richtungsanteil
+    haben auf Preis-Ebene keine sinnvolle Interpretation.
+
+    Das R² wird hingegen auf der zurücktransformierten **Preis-Ebene** berechnet
+    (y_actual_prices / y_pred_prices), wenn diese übergeben werden. Damit ist der
+    Wert vergleichbar mit der Literatur, die R² typischerweise auf Preis-Level
+    angibt (z.B. Selvin et al. 2017, Nelson et al. 2017). Hinweis: Auf Preis-Ebene
+    ist R² durch den starken Trend/Level der Kursreihe nach oben verzerrt — der
+    Wert misst primär die Trendfolge, nicht die Prognosekraft der Tagesbewegung.
+    Fallback auf Return-Ebene, falls keine Preis-Arrays vorliegen.
+    """
     mae = np.mean(np.abs(y_actual - y_predicted))
     mse = np.mean((y_actual - y_predicted) ** 2)
     rmse = np.sqrt(mse)
 
-    # Naive baseline: always predict 0 (= keine Bewegung)
+    # Naive baseline: always predict 0 (= keine Bewegung) — Return-Ebene
     naive_mae = np.mean(np.abs(y_actual))
     mae_improvement = (naive_mae - mae) / naive_mae * 100 if naive_mae > 0 else 0.0
 
-    # Directional accuracy: korrektes Vorzeichen?
+    # Directional accuracy: korrektes Vorzeichen? — Return-Ebene
     nonzero_mask = y_actual != 0
     if nonzero_mask.sum() > 0:
         correct_direction = np.sign(y_actual[nonzero_mask]) == np.sign(y_predicted[nonzero_mask])
@@ -123,9 +137,14 @@ def compute_metrics(y_actual, y_predicted):
     else:
         directional_accuracy = 50.0
 
-    # R-squared
-    ss_res = np.sum((y_actual - y_predicted) ** 2)
-    ss_tot = np.sum((y_actual - np.mean(y_actual)) ** 2)
+    # R-squared auf Preis-Ebene (zurücktransformiert) — vergleichbar mit Literatur.
+    # Fallback auf Return-Ebene, falls Preis-Arrays fehlen.
+    if y_actual_prices is not None and y_pred_prices is not None:
+        r2_actual, r2_pred = y_actual_prices, y_pred_prices
+    else:
+        r2_actual, r2_pred = y_actual, y_predicted
+    ss_res = np.sum((r2_actual - r2_pred) ** 2)
+    ss_tot = np.sum((r2_actual - np.mean(r2_actual)) ** 2)
     r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
 
     return {
@@ -328,7 +347,8 @@ def main():
                 'y_predicted_prices':  y_pred_prices,
                 'best_L':              best_L,
             }
-            metrics = compute_metrics(y_actual_returns, y_pred_returns)
+            metrics = compute_metrics(y_actual_returns, y_pred_returns,
+                                      y_actual_prices, y_pred_prices)
             metrics['best_L'] = best_L
             all_metrics[index][model] = metrics
             print(f"  {index:12s} {MODEL_LABELS[model]:10s} L={best_L:2d}: "
@@ -364,9 +384,9 @@ def main():
     )
     plot_cross_index_heatmap(
         all_metrics, 'r_squared',
-        'R² by Index and Model',
+        'R² (Preis-Ebene) by Index and Model',
         'cross_index_r_squared.png', output_base,
-        fmt='.4f', cmap='RdYlGn'
+        fmt='.4f', cmap='RdYlGn', vmin=0.0, vmax=1.0
     )
     print(f"  Cross-index: 3 heatmaps saved")
 
