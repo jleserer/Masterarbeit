@@ -3,9 +3,9 @@ DEMO der neuen Pipeline (Coarse + Sweep) mit stark reduzierter Konfiguration,
 damit man in wenigen Minuten die später erzeugten Artefakte zur Diskussion stellen kann.
 
 Reduktion gegenüber Production:
-  - Indizes:   8         -> 1   (SP500)
+  - Indizes:   6         -> 1   (SP500)
   - Modelle:   4         -> 4   (alle, damit Output-Struktur vollständig sichtbar)
-  - Configs:   208       -> 2 pro Modell (= 8 Configs)
+  - Configs:   160       -> 2 pro Modell (= 8 Configs)
   - Coarse L:  7         -> 2   ([5, 30])
   - Fine L:    60        -> 3   ([5, 15, 30])
 

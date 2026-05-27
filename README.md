@@ -42,17 +42,17 @@ SCHRITT 6: Cross-Index Vergleich
 
 ### Aufruf
 
-Hardware-Cap: `--workers` wird hart auf 24 begrenzt (32 Worker hatten auf 48 GB RAM mehrfach OOM-Crashes verursacht).
+Hardware-Cap: `--workers` wird hart auf 16 begrenzt (32 Worker hatten auf 48 GB RAM mehrfach OOM-Crashes verursacht, ~1.2 GB TF-Init pro Worker).
 
 ```bash
 # Empfohlen: Watchdog (Auto-Restart bei Crashes)
-python pipeline_watchdog.py --workers 24 --max-restarts 30
+python pipeline_watchdog.py --workers 16 --max-restarts 30
 
 # Direkt (ohne Watchdog)
-python run_pipeline.py --workers 24
+python run_pipeline.py --workers 16
 
 # Resume nach Crash (lässt fertige Configs unangetastet)
-python run_pipeline.py --workers 24 --no-clean
+python run_pipeline.py --workers 16 --no-clean
 
 # Nur aufräumen (alle Ergebnisse löschen)
 python run_pipeline.py --clean-only
@@ -93,9 +93,9 @@ keine Selektion. Best-L bleibt der in Phase 2 anhand Val gewählte Wert.
 ### Metriken
 
 - **MSE-Loss** auf Log-Returns (Optimierungszielgröße)
-- **MARE** (Mean Absolute Relative Error) **auf Preisen** nach Inverse-Transform
-  - `MARE = mean(|p_pred - p_true| / (|p_true| + ε))`
-  - Auf Preis-Ebene interpretierbar (≈ relativer Preisfehler in %)
+- **MAPE** (Mean Absolute Percentage Error) **auf Preisen** nach Inverse-Transform
+  - `MAPE = 100 · mean(|p_pred - p_true| / (|p_true| + ε))`  (Prozent)
+  - Plots und Tabellen verwenden MAPE; intern (`results.json`, `best_test_metrics.json`) wird der Rohwert weiterhin als Feld `mare` in Dezimalform gespeichert (`MAPE = mare · 100`, identische Definition, nur Skalierung).
 - Phase 6 zusätzlich: Directional Accuracy, MAE vs. Naive-Zero-Baseline, R²
 
 ### Reproduzierbarkeit
@@ -193,15 +193,15 @@ python stockData/get-data/normalize_data.py
 ### Pipeline starten
 
 ```bash
-python pipeline_watchdog.py --workers 24
+python pipeline_watchdog.py --workers 16
 ```
 
 Auf 16 C / 32 T:
 - **Phase 1 (Coarse Tuning):** 6 720 Tasks → ca. 2–3 h (dominiert die Laufzeit).
-- **Phase 3 (L=1..60 Sweep):** 1 440 Tasks, davon 6×4×7 = 168 reine Loads aus Phase 1. Die übrigen ~1 272 Tasks sind Re-Trainings mit best_cfg bei nicht-coarse L. Geschätzt 25–40 min mit 24 Workern.
+- **Phase 3 (L=1..60 Sweep):** 1 440 Tasks, davon 6×4×7 = 168 reine Loads aus Phase 1. Die übrigen ~1 272 Tasks sind Re-Trainings mit best_cfg bei nicht-coarse L. Geschätzt 25–40 min mit 16 Workern.
 - **Plots + Cross-Index:** Sekunden.
 
-Werte über `--workers 24` werden geclamped (siehe oben).
+Werte über `--workers 16` werden geclamped (siehe oben).
 
 ### Manuelles Re-Plotting
 

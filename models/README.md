@@ -154,7 +154,7 @@ model.run_full_pipeline()
 - **Target**: Close-Log-Return (Single-Output)
 - **Optimizer**: Adam
 - **Loss**: MSE (Mean Squared Error) auf Log-Returns
-- **Reporting-Metrik**: MARE (Mean Absolute Relative Error) **auf Preisen** nach Inverse-Transform
+- **Reporting-Metrik**: MAPE (Mean Absolute Percentage Error) **auf Preisen** nach Inverse-Transform — `MAPE = 100 · mean(|p_pred - p_true| / (|p_true| + ε))`. Intern (`results.json`) wird der Rohwert als `mare` in Dezimalform abgelegt; `MAPE = mare · 100`
 - **Training**: Feste Epochenzahl (kein EarlyStopping)
 - **Data Split**: 65%-15%-20% (Goodfellow et al., 2016), chronologisch (kein Shuffle)
 - **Inverse Transform**: Rücktransformation von Returns zu Preisen via `DataPreparator`

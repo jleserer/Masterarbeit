@@ -696,7 +696,7 @@ def run_parallel_best_predict(max_workers, tf_threads):
         except BrokenProcessPool as e:
             print(f"\n  WARN: ProcessPool abgestürzt ({e}). Starte neu.")
         finally:
-            completed_now = get_completed_best_predicts(relevant_lookbacks)
+            completed_now = get_completed_best_predicts(FINE_LOOKBACKS)
             remaining = [(idx, m, L) for idx, m, L in all_tasks
                          if (idx, m, L) not in completed_now]
             retry += 1
