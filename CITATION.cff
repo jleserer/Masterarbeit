@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "Wenn Sie diesen Code verwenden, zitieren Sie ihn bitte wie folgt."
+title: "Vergleich von KI-Algorithmen zur Vorhersage von Börsenindizes"
+authors:
+  - family-names: "Leserer"
+    given-names: "Jeremias"
+    email: "leserer.jeremias@gmail.com"
+version: "v1.0-thesis"
+date-released: "2026-05-24"
+type: software
