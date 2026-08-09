@@ -81,6 +81,12 @@ def compute_sma_metrics(index_name):
     ss_tot = np.sum((test_actual_prices - test_actual_prices.mean()) ** 2)
     r2_price = float(1 - ss_res / ss_tot)
 
+    # Naive-Baseline (Random Walk P̂(t)=P(t-1)) auf Preis-Ebene — derselbe
+    # Vergleichsmaßstab wie in post_processing.compute_metrics
+    naive_mape = float(np.mean(np.abs((test_actual_prices - prev_prices)
+                                      / test_actual_prices)) * 100)
+    mape_improvement = float((naive_mape - mape_price) / naive_mape * 100)
+
     # --- Return-Ebene ---
     # SMA-20 als Return-Prognose: r̂(t) = ln(SMA(t) / P(t-1))
     sma_pred_returns = np.log(sma_pred_prices / prev_prices)
@@ -101,6 +107,8 @@ def compute_sma_metrics(index_name):
         'mae_price': mae_price,
         'rmse_price': rmse_price,
         'mape_price_pct': mape_price,
+        'naive_baseline_mape_pct': naive_mape,
+        'mape_improvement_pct': mape_improvement,
         'r_squared_price': r2_price,
         'mae_return': mae_ret,
         'rmse_return': rmse_ret,
@@ -114,15 +122,16 @@ def main():
     results = {}
     print("SMA-20-Baseline — Auswertung auf dem Test-Split (Preis-Ebene)")
     print("=" * 78)
-    print(f"{'Index':11s} {'MAE':>10s} {'RMSE':>10s} {'MAPE%':>9s} "
-          f"{'R2':>9s} {'DirAcc%':>9s} {'MAE-Impr%':>10s}")
+    print(f"{'Index':11s} {'MAE':>10s} {'MAPE%':>9s} {'NaiveMAPE%':>11s} "
+          f"{'MAPE-Impr%':>11s} {'R2':>9s} {'DirAcc%':>9s}")
     print("-" * 78)
     for index_name in INDICES:
         m = compute_sma_metrics(index_name)
         results[index_name] = m
-        print(f"{index_name:11s} {m['mae_price']:10.4f} {m['rmse_price']:10.4f} "
-              f"{m['mape_price_pct']:8.4f}% {m['r_squared_price']:9.5f} "
-              f"{m['directional_accuracy_pct']:8.2f}% {m['mae_improvement_pct']:+10.3f}")
+        print(f"{index_name:11s} {m['mae_price']:10.4f} "
+              f"{m['mape_price_pct']:8.4f}% {m['naive_baseline_mape_pct']:10.4f}% "
+              f"{m['mape_improvement_pct']:+10.3f}% {m['r_squared_price']:9.5f} "
+              f"{m['directional_accuracy_pct']:8.2f}%")
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT_PATH, 'w', encoding='utf-8') as f:

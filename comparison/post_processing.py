@@ -8,8 +8,9 @@ pred_test.npz aus parameter_tuning/results/<MODEL>/<INDEX>/L<best_L>/pred_test.n
 und berechnet darauf:
 
   - Directional Accuracy (% korrekte Up/Down-Predictions)
-  - Naive Baseline-Vergleich (always-zero predictor)
-  - MAE Improvement vs Baseline
+  - MAPE auf Preis-Ebene: Modell vs. Naive-Baseline (Random Walk P̂(t) = P(t−1))
+  - MAPE Improvement vs Baseline (primäres Vergleichsmaß)
+  - MAE Improvement vs Baseline auf Log-Return-Ebene (nur zur Referenz)
   - R-squared
   - Cumulative Returns plots
   - Cross-Index Heatmaps
@@ -108,12 +109,19 @@ def load_predictions(index_name, model_name, best_L, results_dir):
 def compute_metrics(y_actual, y_predicted, y_actual_prices=None, y_pred_prices=None):
     """Berechnet erweiterte Metriken aus tatsächlichen und vorhergesagten Werten.
 
-    MAE, MSE, RMSE, Naive-Baseline und Directional Accuracy werden auf der
-    Log-Return-Ebene berechnet (y_actual / y_predicted) — nur dort sind diese
-    Größen sinnvoll: die Naive-Baseline (Vorhersage = 0) und der Richtungsanteil
-    haben auf Preis-Ebene keine sinnvolle Interpretation.
+    Der Baseline-Vergleich erfolgt auf der zurücktransformierten **Preis-Ebene**
+    und in derselben Metrik, in der auch das Modell berichtet wird (MAPE):
+    Die Naive-Baseline ist der Random Walk P̂(t) = P(t−1); P(t−1) wird exakt aus
+    P(t) und r(t) rekonstruiert (P(t−1) = P(t)·exp(−r(t))). Verglichen wird
+    MAPE_naive gegen MAPE_modell, beide mit dem tatsächlichen Preis P(t) im
+    Nenner. Die MAE-Verbesserung auf Log-Return-Ebene (Naive = Vorhersage 0)
+    wird nur noch zur Referenz mitberechnet — sie weicht systematisch vom
+    Preis-Ebenen-Vergleich ab und wird nicht mehr berichtet.
 
-    Das R² wird hingegen auf der zurücktransformierten **Preis-Ebene** berechnet
+    MAE, MSE, RMSE und Directional Accuracy werden weiterhin auf der
+    Log-Return-Ebene berechnet (y_actual / y_predicted).
+
+    Das R² wird auf der zurücktransformierten Preis-Ebene berechnet
     (y_actual_prices / y_pred_prices), wenn diese übergeben werden. Damit ist der
     Wert vergleichbar mit der Literatur, die R² typischerweise auf Preis-Level
     angibt (z.B. Selvin et al. 2017, Nelson et al. 2017). Hinweis: Auf Preis-Ebene
@@ -125,9 +133,20 @@ def compute_metrics(y_actual, y_predicted, y_actual_prices=None, y_pred_prices=N
     mse = np.mean((y_actual - y_predicted) ** 2)
     rmse = np.sqrt(mse)
 
-    # Naive baseline: always predict 0 (= keine Bewegung) — Return-Ebene
+    # Naive baseline: always predict 0 (= keine Bewegung) — Return-Ebene.
+    # Nur Referenz; das berichtete Vergleichsmaß ist mape_improvement_pct.
     naive_mae = np.mean(np.abs(y_actual))
     mae_improvement = (naive_mae - mae) / naive_mae * 100 if naive_mae > 0 else 0.0
+
+    # MAPE auf Preis-Ebene: Modell vs. Naive-Baseline (Random Walk).
+    # P(t−1) = P(t)·exp(−r(t)) — exakte Rekonstruktion des Vortagespreises.
+    if y_actual_prices is not None and y_pred_prices is not None:
+        prev_prices = y_actual_prices * np.exp(-y_actual)
+        mape = np.mean(np.abs((y_actual_prices - y_pred_prices) / y_actual_prices)) * 100
+        naive_mape = np.mean(np.abs((y_actual_prices - prev_prices) / y_actual_prices)) * 100
+        mape_improvement = (naive_mape - mape) / naive_mape * 100 if naive_mape > 0 else 0.0
+    else:
+        mape = naive_mape = mape_improvement = None
 
     # Directional accuracy: korrektes Vorzeichen? — Return-Ebene
     nonzero_mask = y_actual != 0
@@ -153,6 +172,9 @@ def compute_metrics(y_actual, y_predicted, y_actual_prices=None, y_pred_prices=N
         'mse': float(mse),
         'naive_baseline_mae': float(naive_mae),
         'mae_improvement_pct': float(mae_improvement),
+        'mape_pct': float(mape) if mape is not None else None,
+        'naive_baseline_mape_pct': float(naive_mape) if naive_mape is not None else None,
+        'mape_improvement_pct': float(mape_improvement) if mape_improvement is not None else None,
         'directional_accuracy_pct': float(directional_accuracy),
         'r_squared': float(r_squared),
     }
@@ -189,31 +211,47 @@ def plot_directional_accuracy(index_metrics, output_dir, index_name):
     plt.close()
 
 
-def plot_mae_vs_baseline(index_metrics, output_dir, index_name):
-    """Bar plot: Model MAE vs Naive Baseline MAE."""
-    models = [m for m in MODELS if m in index_metrics]
+def plot_mape_vs_baseline(index_metrics, output_dir, index_name):
+    """Bar plot: Model-MAPE vs. modell-eigene Naive-Baseline (Preis-Ebene).
+
+    Die Naive-Baseline (Random Walk P̂(t)=P(t−1)) ist modellspezifisch, weil
+    sich das Testfenster mit best_L unterscheidet — deshalb pro Modell ein
+    eigenes Balkenpaar statt einer gemeinsamen Referenzlinie.
+    """
+    models = [m for m in MODELS if m in index_metrics
+              and index_metrics[m].get('mape_pct') is not None]
     if not models:
         return
-    maes = [index_metrics[m]['mae'] for m in models]
-    baseline_mae = index_metrics[models[0]]['naive_baseline_mae']
+    mapes = [index_metrics[m]['mape_pct'] for m in models]
+    naives = [index_metrics[m]['naive_baseline_mape_pct'] for m in models]
     colors = [MODEL_COLORS[m] for m in models]
     labels = [MODEL_LABELS[m] for m in models]
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    bars = ax.bar(labels, maes, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
-    ax.axhline(y=baseline_mae, color='black', linestyle='--', linewidth=1.5,
-               label=f'Naive Baseline (always 0): {baseline_mae:.6f}')
+    x = np.arange(len(models))
+    width = 0.38
+    fig, ax = plt.subplots(figsize=(9, 5))
+    bars_m = ax.bar(x - width / 2, mapes, width, color=colors, alpha=0.85,
+                    edgecolor='black', linewidth=0.5)
+    bars_n = ax.bar(x + width / 2, naives, width, color='lightgray',
+                    edgecolor='black', linewidth=0.5, hatch='//',
+                    label='Naive Baseline P̂(t)=P(t−1)')
 
-    for bar, mae_val in zip(bars, maes):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.0001,
-                f'{mae_val:.6f}', ha='center', va='bottom', fontsize=9)
+    for bar, val in list(zip(bars_m, mapes)) + list(zip(bars_n, naives)):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
+                f'{val:.4f}', ha='center', va='bottom', fontsize=8)
 
-    ax.set_ylabel('MAE (Log Returns)', fontsize=12)
-    ax.set_title(f'{index_name} - MAE vs Naive Baseline', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel('MAPE (%, Preis-Ebene)', fontsize=12)
+    ax.set_title(f'{index_name} - MAPE vs Naive Baseline', fontsize=14, fontweight='bold')
+    # Achse zoomen, sonst sind Differenzen < 0,5 % relativ nicht erkennbar
+    lo, hi = min(mapes + naives), max(mapes + naives)
+    pad = (hi - lo) * 0.5 + hi * 0.002
+    ax.set_ylim(max(0.0, lo - pad), hi + pad)
     ax.legend(fontsize=10, loc='lower right')
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, '02_mae_vs_baseline.png'), dpi=150)
+    plt.savefig(os.path.join(output_dir, '02_mape_vs_naive_baseline.png'), dpi=150)
     plt.close()
 
 
@@ -353,8 +391,9 @@ def main():
             all_metrics[index][model] = metrics
             print(f"  {index:12s} {MODEL_LABELS[model]:10s} L={best_L:2d}: "
                   f"DA={metrics['directional_accuracy_pct']:.1f}%, "
-                  f"MAE={metrics['mae']:.6f}, "
-                  f"Impr={metrics['mae_improvement_pct']:+.2f}%, "
+                  f"MAPE={metrics['mape_pct']:.4f}%, "
+                  f"Naive={metrics['naive_baseline_mape_pct']:.4f}%, "
+                  f"Impr={metrics['mape_improvement_pct']:+.3f}%, "
                   f"R²={metrics['r_squared']:.4f}")
 
     print(f"\n[3/4] Generating plots...")
@@ -364,7 +403,7 @@ def main():
         idx_output = os.path.join(output_base, index)
         os.makedirs(idx_output, exist_ok=True)
         plot_directional_accuracy(all_metrics[index], idx_output, index)
-        plot_mae_vs_baseline(all_metrics[index], idx_output, index)
+        plot_mape_vs_baseline(all_metrics[index], idx_output, index)
         plot_cumulative_returns(all_predictions[index], idx_output, index)
         plot_returns_overlay(all_predictions[index], idx_output, index)
         print(f"  {index}: 4 plots saved")
@@ -377,9 +416,9 @@ def main():
         fmt='.1f', cmap='RdYlGn', vmin=45, vmax=55
     )
     plot_cross_index_heatmap(
-        all_metrics, 'mae_improvement_pct',
-        'MAE Improvement vs Naive Baseline (%) by Index and Model',
-        'cross_index_mae_improvement.png', output_base,
+        all_metrics, 'mape_improvement_pct',
+        'MAPE Improvement vs Naive Baseline (%, Preis-Ebene)\nby Index and Model',
+        'cross_index_mape_improvement.png', output_base,
         fmt='.2f', cmap='RdYlGn'
     )
     plot_cross_index_heatmap(
@@ -429,8 +468,8 @@ def main():
     print(f"\n{'='*70}")
     print("SUMMARY")
     print(f"{'='*70}")
-    print(f"\n{'Index':12s} {'Model':10s} {'DA%':>6s} {'MAE':>10s} "
-          f"{'Baseline':>10s} {'Impr%':>7s} {'R²':>8s}")
+    print(f"\n{'Index':12s} {'Model':10s} {'DA%':>6s} {'MAPE%':>9s} "
+          f"{'Naive%':>9s} {'Impr%':>8s} {'R²':>8s}")
     print("-" * 65)
     for index in sorted(all_metrics.keys()):
         for model in MODELS:
@@ -438,9 +477,9 @@ def main():
                 m = all_metrics[index][model]
                 print(f"{index:12s} {MODEL_LABELS[model]:10s} "
                       f"{m['directional_accuracy_pct']:5.1f}% "
-                      f"{m['mae']:10.6f} "
-                      f"{m['naive_baseline_mae']:10.6f} "
-                      f"{m['mae_improvement_pct']:+6.2f}% "
+                      f"{m['mape_pct']:8.4f}% "
+                      f"{m['naive_baseline_mape_pct']:8.4f}% "
+                      f"{m['mape_improvement_pct']:+7.3f}% "
                       f"{m['r_squared']:8.4f}")
 
     print(f"\nCompleted at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

@@ -1,0 +1,95 @@
+{
+  "meta": {
+    "timestamp": "2026-07-25T21:09:54.616298",
+    "index": "SP500",
+    "model": "GRU",
+    "window": {
+      "start": "2016-02-29",
+      "end": "2019-02-28",
+      "n_days": 756,
+      "selection_criterion": "3-Jahres-Fenster vor Covid mit minimaler Niveauänderung im letzten Jahr (+2,6 %) und minimalem Test-Überschuss über die Train-Preisspanne (~2 %)"
+    },
+    "split": {
+      "principle": "65/15/20 (chronologisch, wie Abschnitt 4.3)",
+      "n_returns": 755,
+      "train": 490,
+      "val": 113,
+      "test": 152,
+      "n_test_days": 151,
+      "test_period": "2018-07-24 bis 2019-02-28"
+    },
+    "gru_config": {
+      "dropout": 0.2,
+      "dense_units": 16,
+      "lr": 0.001,
+      "batch": 8,
+      "epochs": 100,
+      "L": 1,
+      "gru_units": [
+        128,
+        64
+      ],
+      "source": "best_configurations.json SP500/best_gru"
+    },
+    "minmax_diagnostics": {
+      "train_price_min": 1932.22998046875,
+      "train_price_max": 2872.8701171875,
+      "scaled_val_range": [
+        0.6897111809351074,
+        0.9391371920406181
+      ],
+      "scaled_test_range": [
+        0.4453032576822113,
+        1.0615324400406763
+      ],
+      "test_days_above_train_max_pct": 20.52980132450331
+    }
+  },
+  "results": {
+    "minmax": {
+      "mape_pct": 1.327748505119241,
+      "naive_baseline_mape_pct": 0.7515981117830889,
+      "mape_improvement_pct": -76.65671112042776,
+      "mae_price": 36.63078682142983,
+      "rmse_price": 41.46009113550602,
+      "r_squared_price": 0.8926295869479932,
+      "directional_accuracy_pct": 49.00662251655629,
+      "m_ratio_mean": -15.728311715850547,
+      "m_ratio_median": 1.05907955664376,
+      "m_ratio_share_positive_pct": 67.54966887417218,
+      "m_ratio_share_between_0_1_pct": 16.55629139072848,
+      "m_ratio_share_gt_1_pct": 50.993377483443716,
+      "m_ratio_share_le_0_pct": 32.450331125827816
+    },
+    "logreturn": {
+      "mape_pct": 0.7622003914284461,
+      "naive_baseline_mape_pct": 0.7515981117830889,
+      "mape_improvement_pct": -1.4106314903059551,
+      "mae_price": 20.474609913205764,
+      "rmse_price": 29.71063167170341,
+      "r_squared_price": 0.9448623960283148,
+      "directional_accuracy_pct": 51.65562913907284,
+      "m_ratio_mean": 2.531667558866113,
+      "m_ratio_median": 0.9323473450733207,
+      "m_ratio_share_positive_pct": 90.72847682119205,
+      "m_ratio_share_between_0_1_pct": 42.384105960264904,
+      "m_ratio_share_gt_1_pct": 48.34437086092716,
+      "m_ratio_share_le_0_pct": 9.271523178807946
+    },
+    "naive": {
+      "mape_pct": 0.7515981117830889,
+      "naive_baseline_mape_pct": 0.7515981117830889,
+      "mape_improvement_pct": 0.0,
+      "mae_price": 20.182182261485927,
+      "rmse_price": 29.35654207006008,
+      "r_squared_price": 0.9461688180228026,
+      "directional_accuracy_pct": null,
+      "m_ratio_mean": 1.0,
+      "m_ratio_median": 1.0,
+      "m_ratio_share_positive_pct": 100.0,
+      "m_ratio_share_between_0_1_pct": 100.0,
+      "m_ratio_share_gt_1_pct": 0.0,
+      "m_ratio_share_le_0_pct": 0.0
+    }
+  }
+}
